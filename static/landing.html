@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ingest — uploads that survive bad networks</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#12151A',
+          paper: '#EDEAE3',
+          slate: '#868D96',
+          amber: '#F2A93C',
+          resolve: '#3ECF8E',
+          panel: '#191D23',
+        },
+        fontFamily: {
+          sans: ['"IBM Plex Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+</head>
+<body class="bg-ink text-paper font-sans" style="background:#12151A; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);">
+
+  <!-- Nav -->
+  <header class="border-b border-white/10">
+    <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full bg-amber"></div>
+        <span class="text-[15px] font-medium tracking-tight">Ingest</span>
+      </div>
+      <nav class="hidden sm:flex items-center gap-8 text-[14px] text-slate">
+        <a href="#how" class="hover:text-paper transition-colors">How it works</a>
+        <a href="#use-cases" class="hover:text-paper transition-colors">Use cases</a>
+        <a href="#docs" class="hover:text-paper transition-colors">Docs</a>
+      </nav>
+      <a href="#get-key" class="text-[14px] font-medium bg-paper text-ink px-4 py-2 rounded-md hover:bg-white transition-colors">Upload a File</a>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="max-w-5xl mx-auto px-6 pt-16 pb-20">
+    <div class="grid md:grid-cols-2 gap-12 items-center">
+      <div>
+        <h1 class="text-[40px] sm:text-[48px] leading-[1.08] font-medium tracking-tight max-w-[15ch]">
+          Uploads that pick up exactly where the connection dropped.
+        </h1>
+        <p class="mt-6 text-[17px] leading-[1.7] text-slate max-w-[42ch]">
+          A file upload API built for the networks your users actually have. Every chunk is
+          tracked by byte offset, so a lost connection at 80% never means starting over at 0%.
+        </p>
+        <div class="mt-8 flex items-center gap-4">
+          <a href="#get-key" class="bg-amber text-ink text-[15px] font-medium px-5 py-3 rounded-md hover:brightness-110 transition-all">
+            Upload a File
+          </a>
+          <a href="#docs" class="text-[15px] font-medium text-paper/90 hover:text-paper transition-colors">
+            Read the docs
+          </a>
+        </div>
+      </div>
+
+      <!-- Live resumable-upload demo -->
+      <div class="bg-panel border border-white/10 rounded-lg p-6">
+        <div class="flex items-center justify-between text-[13px] font-mono text-slate mb-3">
+          <span id="filename">kyc_passport_scan.pdf</span>
+          <span id="filesize">2.1 MB</span>
+        </div>
+        <div class="h-2 rounded-full bg-white/5 overflow-hidden">
+          <div id="bar" class="h-full bg-amber rounded-full" style="width:0%; transition: width 0.4s linear;"></div>
+        </div>
+        <div class="mt-3 flex items-center justify-between text-[13px] font-mono">
+          <span id="offset" class="text-slate">offset 0 / 2,202,009</span>
+          <span id="status" class="text-slate">connecting</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem framing -->
+  <section class="border-t border-white/10">
+    <div class="max-w-5xl mx-auto px-6 py-16">
+      <p class="text-[19px] leading-[1.75] max-w-[58ch] text-paper/90">
+        Most upload APIs assume a stable connection. On a 3G link in a moving vehicle,
+        or a 4G tower shared by a few hundred people, that assumption breaks constantly —
+        and every naive implementation makes the user pay for it by restarting a 20MB
+        upload from zero, again.
+      </p>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section id="how" class="border-t border-white/10">
+    <div class="max-w-5xl mx-auto px-6 py-16">
+      <h2 class="text-[22px] font-medium mb-10">How it works</h2>
+      <div class="space-y-8">
+        <div class="flex gap-5 border-l-2 border-amber/40 pl-5">
+          <div class="w-8 shrink-0 text-amber font-mono text-[13px] pt-0.5">01</div>
+          <div>
+            <p class="font-medium text-[15px]">Chunks are tracked by byte offset, not by attempt.</p>
+            <p class="mt-1.5 text-[14px] leading-[1.7] text-slate max-w-[54ch]">A client asks the API where it left off and resumes from that exact byte — no chunk is ever re-sent unnecessarily.</p>
+          </div>
+        </div>
+        <div class="flex gap-5 border-l-2 border-white/10 pl-5">
+          <div class="w-8 shrink-0 text-slate font-mono text-[13px] pt-0.5">02</div>
+          <div>
+            <p class="font-medium text-[15px]">Every file is hashed and deduplicated on arrival.</p>
+            <p class="mt-1.5 text-[14px] leading-[1.7] text-slate max-w-[54ch]">Identical content is never stored twice, whether it's re-uploaded by the same user or a different one.</p>
+          </div>
+        </div>
+        <div class="flex gap-5 border-l-2 border-white/10 pl-5">
+          <div class="w-8 shrink-0 text-slate font-mono text-[13px] pt-0.5">03</div>
+          <div>
+            <p class="font-medium text-[15px]">Scanning and processing happen off the request path.</p>
+            <p class="mt-1.5 text-[14px] leading-[1.7] text-slate max-w-[54ch]">Antivirus scanning, thumbnailing, and metadata extraction run asynchronously, so your users aren't waiting on them.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code sample -->
+  <section id="docs" class="border-t border-white/10">
+    <div class="max-w-5xl mx-auto px-6 py-16">
+      <h2 class="text-[22px] font-medium mb-6">Integrate in a few lines</h2>
+      <div class="bg-panel border border-white/10 rounded-lg p-5 overflow-x-auto">
+        <pre class="font-mono text-[13px] leading-[1.8] text-paper/90"><span class="text-slate"># resume an interrupted upload from its last offset</span>
+curl -X PATCH https://api.ingest.dev/uploads/up_8f2a1c \
+  -H "Authorization: Bearer $INGEST_KEY" \
+  -H "Upload-Offset: 1583200" \
+  --data-binary @remaining_chunk.bin</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Use cases -->
+  <section id="use-cases" class="border-t border-white/10">
+    <div class="max-w-5xl mx-auto px-6 py-16">
+      <h2 class="text-[22px] font-medium mb-8">Built for</h2>
+      <div class="grid sm:grid-cols-3 gap-8">
+        <div>
+          <p class="font-medium text-[15px]">KYC and identity verification</p>
+          <p class="mt-2 text-[14px] leading-[1.7] text-slate">ID scans and proof-of-address documents, scanned and audit-logged automatically.</p>
+        </div>
+        <div>
+          <p class="font-medium text-[15px]">Marketplaces</p>
+          <p class="mt-2 text-[14px] leading-[1.7] text-slate">Sellers uploading product photos and video from wherever they happen to be.</p>
+        </div>
+        <div>
+          <p class="font-medium text-[15px]">Field operations</p>
+          <p class="mt-2 text-[14px] leading-[1.7] text-slate">Reports and media captured offline or on unreliable connections, synced when possible.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section id="get-key" class="border-t border-white/10">
+    <div class="max-w-5xl mx-auto px-6 py-20 text-center">
+      <h2 class="text-[28px] font-medium max-w-[22ch] mx-auto leading-[1.2]">Stop making your users restart their uploads.</h2>
+      <a href="#" class="mt-8 inline-block bg-amber text-ink text-[15px] font-medium px-6 py-3 rounded-md hover:brightness-110 transition-all">
+        Upload a File
+      </a>
+    </div>
+  </section>
+
+  <footer class="border-t border-white/10">
+    <div class="max-w-5xl mx-auto px-6 py-8 flex items-center justify-between text-[13px] text-slate">
+      <span>Ingest</span>
+      <span class="font-mono">status.ingest.dev</span>
+    </div>
+  </footer>
+
+<script>
+  (function () {
+    const bar = document.getElementById('bar');
+    const offsetEl = document.getElementById('offset');
+    const statusEl = document.getElementById('status');
+    const total = 2202009;
+    let offset = 0;
+    let phase = 'uploading';
+
+    function fmt(n) { return n.toLocaleString('en-US'); }
+
+    function step() {
+      if (phase === 'uploading') {
+        offset = Math.min(total, offset + Math.floor(total * 0.045));
+        const pct = Math.round((offset / total) * 100);
+        bar.style.width = pct + '%';
+        offsetEl.textContent = 'offset ' + fmt(offset) + ' / ' + fmt(total);
+        statusEl.textContent = 'uploading';
+        statusEl.className = 'text-amber font-mono';
+
+        if (pct >= 62 && pct < 68) {
+          phase = 'dropped';
+          statusEl.textContent = 'connection lost';
+          statusEl.className = 'text-slate font-mono';
+          setTimeout(step, 1400);
+          return;
+        }
+        if (offset >= total) {
+          phase = 'done';
+          statusEl.textContent = 'complete';
+          statusEl.className = 'text-resolve font-mono';
+          setTimeout(reset, 2200);
+          return;
+        }
+        setTimeout(step, 220);
+      } else if (phase === 'dropped') {
+        phase = 'resuming';
+        statusEl.textContent = 'resuming from offset';
+        statusEl.className = 'text-amber font-mono';
+        setTimeout(step, 900);
+      } else if (phase === 'resuming') {
+        phase = 'uploading';
+        step();
+      }
+    }
+
+    function reset() {
+      offset = 0;
+      phase = 'uploading';
+      bar.style.width = '0%';
+      statusEl.textContent = 'connecting';
+      statusEl.className = 'text-slate font-mono';
+      setTimeout(step, 900);
+    }
+
+    setTimeout(step, 700);
+  })();
+</script>
+</body>
+</html>

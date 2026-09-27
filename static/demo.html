@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ingest — live demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: '#12151A',
+          paper: '#EDEAE3',
+          slate: '#868D96',
+          amber: '#F2A93C',
+          resolve: '#3ECF8E',
+          panel: '#191D23',
+          danger: '#E2685A',
+        },
+        fontFamily: {
+          sans: ['"IBM Plex Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+</head>
+<body class="bg-ink text-paper font-sans min-h-screen" style="background:#12151A; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);">
+
+  <header class="border-b border-white/10">
+    <div class="max-w-3xl mx-auto px-6 py-5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 rounded-full bg-amber"></div>
+        <span class="text-[15px] font-medium tracking-tight">Ingest</span>
+        <span class="text-[13px] text-slate ml-2 font-mono">/ demo</span>
+      </div>
+      <a href="https://claude.ai/artifact/8zxzTR7BzWbyHn8FE6tp5Y" class="text-[14px] text-slate hover:text-paper transition-colors">Back to overview</a>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-14">
+    <h1 class="text-[28px] sm:text-[32px] font-medium tracking-tight max-w-[20ch] leading-[1.15]">
+      Try it with a real file.
+    </h1>
+    <p class="mt-4 text-[15px] leading-[1.7] text-slate max-w-[52ch]">
+      Pick any file from your device. It's chunked and hashed in your browser — nothing
+      leaves this page. Kill the connection partway through to see it resume from the
+      exact byte offset instead of restarting.
+    </p>
+
+    <!-- Drop zone -->
+    <div id="dropzone" class="mt-10 border border-dashed border-white/15 rounded-lg p-10 text-center cursor-pointer hover:border-amber/50 transition-colors">
+      <input type="file" id="fileInput" class="hidden">
+      <p class="text-[15px] font-medium">Drop a file here, or click to choose one</p>
+      <p class="mt-1.5 text-[13px] text-slate">Stays local to your browser. Any file type or size.</p>
+    </div>
+
+    <!-- Upload panel -->
+    <div id="panel" class="mt-8 hidden bg-panel border border-white/10 rounded-lg p-6">
+      <div class="flex items-center justify-between text-[13px] font-mono text-slate mb-1">
+        <span id="filename" class="truncate max-w-[60%]"></span>
+        <span id="filesize"></span>
+      </div>
+      <div class="h-2 rounded-full bg-white/5 overflow-hidden mt-3">
+        <div id="bar" class="h-full bg-amber rounded-full" style="width:0%; transition: width 0.25s linear;"></div>
+      </div>
+      <div class="mt-3 flex items-center justify-between text-[13px] font-mono">
+        <span id="offset" class="text-slate"></span>
+        <span id="status" class="text-slate"></span>
+      </div>
+
+      <div class="mt-5 flex items-center gap-3">
+        <button id="killBtn" class="hidden text-[13px] font-medium border border-white/15 text-paper/90 px-4 py-2 rounded-md hover:border-danger hover:text-danger transition-colors">
+          Simulate dropped connection
+        </button>
+        <button id="resumeBtn" class="hidden text-[13px] font-medium bg-amber text-ink px-4 py-2 rounded-md hover:brightness-110 transition-all">
+          Resume upload
+        </button>
+        <button id="resetBtn" class="hidden text-[13px] font-medium text-slate hover:text-paper transition-colors">
+          Try another file
+        </button>
+      </div>
+
+      <!-- Chunk log -->
+      <div id="log" class="mt-5 font-mono text-[12px] text-slate space-y-1 max-h-40 overflow-y-auto"></div>
+
+      <!-- Result -->
+      <div id="result" class="hidden mt-5 pt-5 border-t border-white/10">
+        <div id="resultBadge" class="inline-block text-[13px] font-mono px-3 py-1 rounded-md"></div>
+        <p id="resultText" class="mt-2 text-[13px] leading-[1.6] text-slate"></p>
+        <p class="mt-2 text-[11px] font-mono text-slate/70 break-all" id="resultHash"></p>
+      </div>
+    </div>
+
+    <p class="mt-6 text-[12px] text-slate/70 leading-[1.6] max-w-[52ch]">
+      This demo runs entirely in your browser: chunking, hashing, and dedup are simulated
+      client-side rather than hitting a real API. Upload the same file twice in this
+      browser to see the dedup check hit.
+    </p>
+  </main>
+
+<script>
+(function () {
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const panel = document.getElementById('panel');
+  const filenameEl = document.getElementById('filename');
+  const filesizeEl = document.getElementById('filesize');
+  const bar = document.getElementById('bar');
+  const offsetEl = document.getElementById('offset');
+  const statusEl = document.getElementById('status');
+  const killBtn = document.getElementById('killBtn');
+  const resumeBtn = document.getElementById('resumeBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const logEl = document.getElementById('log');
+  const resultEl = document.getElementById('result');
+  const resultBadge = document.getElementById('resultBadge');
+  const resultText = document.getElementById('resultText');
+  const resultHashEl = document.getElementById('resultHash');
+
+  let seenHashes = [];
+  try {
+    seenHashes = JSON.parse(localStorage.getItem('ingest_demo_hashes') || '[]');
+  } catch (e) { seenHashes = []; }
+
+  function saveHash(h) {
+    seenHashes.push(h);
+    try { localStorage.setItem('ingest_demo_hashes', JSON.stringify(seenHashes)); } catch (e) {}
+  }
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function fmt(n) { return n.toLocaleString('en-US'); }
+
+  function log(msg, cls) {
+    const line = document.createElement('div');
+    line.textContent = msg;
+    if (cls) line.className = cls;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-amber/50'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-amber/50'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('border-amber/50');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+
+  async function sha256(buf) {
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  let uploadState = null;
+
+  async function handleFile(file) {
+    resetUI();
+    panel.classList.remove('hidden');
+    filenameEl.textContent = file.name;
+    filesizeEl.textContent = fmtBytes(file.size);
+    statusEl.textContent = 'hashing';
+    statusEl.className = 'text-slate font-mono';
+
+    const buf = await file.arrayBuffer();
+    const hash = await sha256(buf);
+
+    if (seenHashes.includes(hash)) {
+      bar.style.width = '100%';
+      bar.className = 'h-full bg-resolve rounded-full';
+      offsetEl.textContent = 'offset ' + fmt(file.size) + ' / ' + fmt(file.size);
+      statusEl.textContent = 'deduplicated';
+      statusEl.className = 'text-resolve font-mono';
+      log('content hash matched an existing object — 0 bytes transferred', 'text-resolve');
+      showResult(true, hash);
+      resetBtn.classList.remove('hidden');
+      return;
+    }
+
+    const totalSize = file.size || 1;
+    const chunkSize = Math.max(16 * 1024, Math.floor(totalSize / 28));
+    uploadState = { offset: 0, totalSize, chunkSize, hash, dropped: false, stoppedAt: null };
+
+    killBtn.classList.remove('hidden');
+    runChunkLoop();
+  }
+
+  function runChunkLoop() {
+    const s = uploadState;
+    if (!s) return;
+
+    function step() {
+      if (s.dropped) return;
+      if (s.offset >= s.totalSize) return finishUpload();
+
+      const next = Math.min(s.totalSize, s.offset + s.chunkSize);
+      s.offset = next;
+      const pct = Math.round((s.offset / s.totalSize) * 100);
+      bar.style.width = pct + '%';
+      offsetEl.textContent = 'offset ' + fmt(s.offset) + ' / ' + fmt(s.totalSize);
+      statusEl.textContent = 'uploading';
+      statusEl.className = 'text-amber font-mono';
+      log('chunk written · offset ' + fmt(s.offset));
+
+      setTimeout(step, 90);
+    }
+    step();
+  }
+
+  killBtn.addEventListener('click', () => {
+    if (!uploadState) return;
+    uploadState.dropped = true;
+    uploadState.stoppedAt = uploadState.offset;
+    statusEl.textContent = 'connection lost';
+    statusEl.className = 'text-danger font-mono';
+    log('— connection dropped at offset ' + fmt(uploadState.offset) + ' —', 'text-danger');
+    killBtn.classList.add('hidden');
+    resumeBtn.classList.remove('hidden');
+  });
+
+  resumeBtn.addEventListener('click', () => {
+    if (!uploadState) return;
+    log('resuming from offset ' + fmt(uploadState.stoppedAt), 'text-amber');
+    uploadState.dropped = false;
+    resumeBtn.classList.add('hidden');
+    killBtn.classList.remove('hidden');
+    runChunkLoop();
+  });
+
+  function finishUpload() {
+    statusEl.textContent = 'complete';
+    statusEl.className = 'text-resolve font-mono';
+    killBtn.classList.add('hidden');
+    resumeBtn.classList.add('hidden');
+    log('upload finalized, object stored', 'text-resolve');
+    saveHash(uploadState.hash);
+    showResult(false, uploadState.hash);
+    resetBtn.classList.remove('hidden');
+  }
+
+  function showResult(deduped, hash) {
+    resultEl.classList.remove('hidden');
+    if (deduped) {
+      resultBadge.textContent = 'Deduplicated';
+      resultBadge.className = 'inline-block text-[13px] font-mono px-3 py-1 rounded-md bg-resolve/10 text-resolve';
+      resultText.textContent = 'Identical content already existed from a prior upload in this browser — no new storage was written.';
+    } else {
+      resultBadge.textContent = 'Stored as new object';
+      resultBadge.className = 'inline-block text-[13px] font-mono px-3 py-1 rounded-md bg-amber/10 text-amber';
+      resultText.textContent = 'Upload the same file again to see the dedup check catch it.';
+    }
+    resultHashEl.textContent = 'sha256: ' + hash;
+  }
+
+  function resetUI() {
+    bar.style.width = '0%';
+    bar.className = 'h-full bg-amber rounded-full';
+    logEl.innerHTML = '';
+    resultEl.classList.add('hidden');
+    resetBtn.classList.add('hidden');
+    killBtn.classList.add('hidden');
+    resumeBtn.classList.add('hidden');
+    uploadState = null;
+  }
+
+  resetBtn.addEventListener('click', () => {
+    panel.classList.add('hidden');
+    fileInput.value = '';
+    resetUI();
+  });
+})();
+</script>
+</body>
+</html>
