@@ -17,3 +17,8 @@ func New(dir string) (*Local, error) {
 	}
 	return &Local{dir: dir}, nil
 }
+
+func (l *Local) Store(ctx context.Context, key string, r io.Reader) error 
+
+
+}
