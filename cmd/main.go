@@ -16,7 +16,7 @@ func main() {
 	mux.HandleFunc("POST /echo", echo)
 
 	server := &http.Server{
-		Addr:              lib.Getenv("ADDR", ":8080"),
+		Addr:              lib.Getenv("PORT", ":8080"),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
