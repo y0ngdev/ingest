@@ -7,9 +7,18 @@ import (
 	"time"
 
 	"ingest/internal/lib"
+	"ingest/internal/storage"
 )
 
 func main() {
+	// Storage initialization
+	storage, err := storage.New("./uploads")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Pass storage to the component that needs it.
+	_ = storage
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", health)
 	mux.HandleFunc("GET /hello", hello)
@@ -26,6 +35,7 @@ func main() {
 
 	log.Printf("listening on %s", server.Addr)
 	log.Fatal(server.ListenAndServe())
+
 }
 
 func health(w http.ResponseWriter, r *http.Request) {
