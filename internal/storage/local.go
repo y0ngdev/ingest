@@ -7,19 +7,19 @@ import (
 	"path/filepath"
 )
 
-type Local struct {
+type LocalStorage struct {
 	dir string
 }
 
-func New(dir string) (*Local, error) {
+func New(dir string) (*LocalStorage, error) {
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
-	return &Local{dir: dir}, nil
+	return &LocalStorage{dir: dir}, nil
 }
 
-func (l *Local) Store(ctx context.Context, key string, r io.Reader) error {
+func (l *LocalStorage) Store(ctx context.Context, key string, r io.Reader) error {
 
 	// Create the file
 
@@ -28,7 +28,7 @@ func (l *Local) Store(ctx context.Context, key string, r io.Reader) error {
 		return err
 	}
 	defer file.Close()
-	
+
 	// Copy the reader’s bytes into it
 	_, err = io.Copy(file, r)
 	if err != nil {
@@ -36,4 +36,13 @@ func (l *Local) Store(ctx context.Context, key string, r io.Reader) error {
 	}
 
 	return nil
+}
+
+func (l *LocalStorage) Retrieve(ctx context.Context, key string) (io.ReadCloser, error) {
+	return os.Open(filepath.Join(l.dir, key))
+}
+
+func (l *LocalStorage) Delete(ctx context.Context, key string) error {
+
+	return os.Remove(filepath.Join(l.dir, key))
 }
