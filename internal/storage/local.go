@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,38 +12,35 @@ type LocalStorage struct {
 	dir string
 }
 
+// New creates the upload directory if it does not exist.
 func New(dir string) (*LocalStorage, error) {
-
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("storage: create dir %q: %w", dir, err)
 	}
 	return &LocalStorage{dir: dir}, nil
 }
 
-func (l *LocalStorage) Store(ctx context.Context, key string, r io.Reader) error {
-
-	// Create the file
-
-	file, err := os.Create(filepath.Join(l.dir, key))
+// Store creates a file at dir/key and drains r into it via io.Copy.
+// Nothing is loaded into memory — bytes flow straight from reader to disk.
+func (l *LocalStorage) Store(_ context.Context, key string, r io.Reader) error {
+	f, err := os.Create(filepath.Join(l.dir, key))
 	if err != nil {
-		return err
+		return fmt.Errorf("storage: create file: %w", err)
 	}
-	defer file.Close()
+	defer f.Close()
 
-	// Copy the reader’s bytes into it
-	_, err = io.Copy(file, r)
-	if err != nil {
-		return err
+	if _, err = io.Copy(f, r); err != nil {
+		return fmt.Errorf("storage: write file: %w", err)
 	}
-
 	return nil
 }
 
-func (l *LocalStorage) Retrieve(ctx context.Context, key string) (io.ReadCloser, error) {
+// Retrieve opens the file at dir/key. The caller must close the returned
+func (l *LocalStorage) Retrieve(_ context.Context, key string) (io.ReadCloser, error) {
 	return os.Open(filepath.Join(l.dir, key))
 }
 
-func (l *LocalStorage) Delete(ctx context.Context, key string) error {
-
+// Delete removes the file at dir/key.
+func (l *LocalStorage) Delete(_ context.Context, key string) error {
 	return os.Remove(filepath.Join(l.dir, key))
 }
