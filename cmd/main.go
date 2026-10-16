@@ -26,7 +26,7 @@ func main() {
 	// Existing utility routes
 	mux.HandleFunc("GET /healthz", health)
 
-	// Upload session routes (Phase 1)
+	// Upload session routes
 	mux.HandleFunc("POST /uploads", uploads.CreateUpload)
 	mux.HandleFunc("PUT /uploads/{id}", uploads.WriteUpload)
 	mux.HandleFunc("GET /uploads/{id}", uploads.GetUpload)
