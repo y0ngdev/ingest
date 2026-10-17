@@ -40,6 +40,15 @@ func (l *LocalStorage) Retrieve(_ context.Context, key string) (io.ReadCloser, e
 	return os.Open(filepath.Join(l.dir, key))
 }
 
+// Stat returns the size in bytes of the file at dir/key.
+func (l *LocalStorage) Stat(_ context.Context, key string) (int64, error) {
+	info, err := os.Stat(filepath.Join(l.dir, key))
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
 // Delete removes the file at dir/key.
 func (l *LocalStorage) Delete(_ context.Context, key string) error {
 	return os.Remove(filepath.Join(l.dir, key))

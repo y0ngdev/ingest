@@ -23,6 +23,7 @@ func New(b storage.Backend) *UploadHandler {
 type uploadResponse struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
+	Size   int64  `json:"size"`
 }
 
 type errorResponse struct {
@@ -51,13 +52,12 @@ func (h *UploadHandler) WriteUpload(w http.ResponseWriter, r *http.Request) {
 // Phase 1: just confirms the file exists and returns its size from disk.
 func (h *UploadHandler) GetUpload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	rc, err := h.storage.Retrieve(r.Context(), id)
+	size, err := h.storage.Stat(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "upload not found")
 		return
 	}
-	rc.Close()
-	writeJSON(w, http.StatusOK, uploadResponse{ID: id, Status: "complete"})
+	writeJSON(w, http.StatusOK, uploadResponse{ID: id, Status: "complete", Size: size})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
