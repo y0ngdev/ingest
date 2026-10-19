@@ -30,6 +30,8 @@ func (l *LocalStorage) Store(_ context.Context, key string, r io.Reader) error {
 	defer f.Close()
 
 	if _, err = io.Copy(f, r); err != nil {
+		// delete file if copy fails
+		_ = os.Remove(f.Name())
 		return fmt.Errorf("storage: write file: %w", err)
 	}
 	return nil
