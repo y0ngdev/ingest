@@ -9,9 +9,9 @@ import (
 	"io"
 	"sync"
 
-	"ingest/internal/storage"
+	"uuid"
 
-	"github.com/google/uuid"
+	"ingest/internal/storage"
 )
 
 type Status string
@@ -126,7 +126,7 @@ func NewStore() *Store {
 
 // Create mints a new session, registers it, and returns it.
 func (st *Store) Create(totalSize int64) *Session {
-	id := uuid.NewString()
+	id := uuid.New().String()
 	s := newSession(id, totalSize, id)
 	st.mu.Lock()
 	st.sessions[id] = s

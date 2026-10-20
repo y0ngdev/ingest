@@ -47,12 +47,9 @@ func (q *MemoryQueue) Run(ctx context.Context) {
 			q.mu.RUnlock()
 
 			for _, h := range hs {
-				h := h
-				q.wg.Add(1)
-				go func() {
-					defer q.wg.Done()
+				q.wg.Go(func() {
 					_ = h(ctx, e)
-				}()
+				})
 			}
 		case <-ctx.Done():
 			q.wg.Wait()

@@ -10,7 +10,6 @@ import (
 	"image/jpeg"
 	_ "image/png"  // register PNG decoder
 	"log/slog"
-	"math"
 	"time"
 
 	"golang.org/x/image/draw"
@@ -109,6 +108,6 @@ func fitRect(src image.Rectangle, maxW, maxH int) image.Rectangle {
 	if w == 0 || h == 0 || (w <= maxW && h <= maxH) {
 		return image.Rect(0, 0, w, h)
 	}
-	scale := math.Min(float64(maxW)/float64(w), float64(maxH)/float64(h))
+	scale := min(float64(maxW)/float64(w), float64(maxH)/float64(h))
 	return image.Rect(0, 0, int(float64(w)*scale), int(float64(h)*scale))
 }
