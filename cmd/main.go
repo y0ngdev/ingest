@@ -14,8 +14,13 @@ import (
 
 func main() {
 	// --- Storage ---
-	// Phase 4: swap storage.New("./uploads") for storage.NewS3(bucket) here;
-	// nothing else in this file needs to change.
+	// To use any S3-compatible backend instead of local disk, swap these lines:
+	//
+	//   store, err := storage.NewS3(storage.S3Config{
+	//       Bucket:    lib.Getenv("S3_BUCKET", "ingest"),
+	//       Endpoint:  lib.Getenv("S3_ENDPOINT", ""),  // empty = AWS; set for MinIO/R2/B2/etc.
+	//       PathStyle: lib.Getenv("S3_PATH_STYLE", "") != "",
+	//   })
 	store, err := storage.New("./uploads")
 	if err != nil {
 		log.Fatalf("storage: %v", err)

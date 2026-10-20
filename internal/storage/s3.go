@@ -20,7 +20,23 @@ type multipartUpload struct {
 	nextPart int32 // 1-based part number
 }
 
-// S3Backend implements Backend against an S3 bucket.
+// S3Config configures an S3-compatible backend.
+// Credentials and region are read from the environment / shared config
+// (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, ~/.aws/config).
+type S3Config struct {
+	Bucket string
+	// Endpoint overrides the default AWS endpoint, enabling any S3-compatible
+	// service: MinIO ("http://localhost:9000"), Cloudflare R2
+	// ("https://<account>.r2.cloudflarestorage.com"), Backblaze B2, etc.
+	// Leave empty to use standard AWS S3.
+	Endpoint string
+	// PathStyle forces path-style addressing (endpoint/bucket/key).
+	// Required for MinIO and most non-AWS providers; ignored when Endpoint
+	// is empty.
+	PathStyle bool
+}
+
+// S3Backend implements Backend against an S3-compatible bucket.
 //
 // Chunked lifecycle (PATCH path):
 //   Append × N  →  CreateMultipartUpload (on first chunk) + UploadPart × N
@@ -35,17 +51,22 @@ type S3Backend struct {
 	active map[string]*multipartUpload // storage key → in-progress upload
 }
 
-// NewS3 reads AWS credentials and region from the environment / shared config
-// (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, ~/.aws/config, etc.)
-// and returns a backend pointed at bucket.
-func NewS3(bucket string) (*S3Backend, error) {
-	cfg, err := config.LoadDefaultConfig(context.Background())
+// NewS3 builds an S3-compatible backend from cfg.
+func NewS3(cfg S3Config) (*S3Backend, error) {
+	awsCfg, err := config.LoadDefaultConfig(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("s3: load config: %w", err)
 	}
+	opts := []func(*s3.Options){}
+	if cfg.Endpoint != "" {
+		opts = append(opts, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(cfg.Endpoint)
+			o.UsePathStyle = cfg.PathStyle
+		})
+	}
 	return &S3Backend{
-		client: s3.NewFromConfig(cfg),
-		bucket: bucket,
+		client: s3.NewFromConfig(awsCfg, opts...),
+		bucket: cfg.Bucket,
 		active: make(map[string]*multipartUpload),
 	}, nil
 }
