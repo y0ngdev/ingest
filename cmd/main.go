@@ -41,7 +41,7 @@ func main() {
 
 	// --- Event queue ---
 	queue := events.NewMemoryQueue(64)
-	worker.RegisterThumbnail(queue)
+	worker.NewThumbnailer(store).Register(queue)
 
 	// Phase 6c: uncomment to enable virus scanning via ClamAV.
 	// scanner := worker.NewScanner(

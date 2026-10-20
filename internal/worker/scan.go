@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	clamd "github.com/dutchcoders/go-clamd"
 
 	"ingest/internal/events"
+	"ingest/internal/lib"
 	"ingest/internal/metrics"
 	"ingest/internal/services"
 	"ingest/internal/storage"
@@ -15,9 +17,11 @@ import (
 
 // Scanner subscribes to UploadComplete events and checks each file with ClamAV.
 //
-// Status flow: complete → scanning → clean | quarantined
+// Status flow: complete → scanning → clean | quarantined | error
 //
 // Quarantined files are NOT deleted — the key remains in storage for audit.
+// If all retry attempts fail the session is marked "error" so the client can
+// query GET /uploads/{id} and see that something went wrong.
 type Scanner struct {
 	clamd    *clamd.Clamd
 	sessions *services.Store
@@ -38,19 +42,32 @@ func NewScanner(socketAddr string, sessions *services.Store, backend storage.Bac
 }
 
 // Register subscribes the scanner to upload-complete events on q.
+// Each event is retried up to 3 times with exponential backoff before being
+// marked as error.
 func (sc *Scanner) Register(q events.Consumer) {
 	q.Subscribe(func(ctx context.Context, e events.Event) error {
 		ev, ok := e.(events.UploadComplete)
 		if !ok {
 			return nil
 		}
-		return sc.scan(ctx, ev)
+
+		err := lib.Retry(ctx, 3, 2*time.Second, func() error {
+			return sc.scan(ctx, ev)
+		})
+		if err != nil {
+			slog.Error("scan: all retries exhausted", "key", ev.Key, "err", err)
+			if sess, serr := sc.sessions.Get(ev.ID); serr == nil {
+				sess.SetScanStatus(services.ScanStatusError)
+			}
+		}
+		return err
 	})
 }
 
 func (sc *Scanner) scan(ctx context.Context, ev events.UploadComplete) error {
 	sess, err := sc.sessions.Get(ev.ID)
 	if err != nil {
+		// Session may be gone after a server restart — not retryable.
 		return fmt.Errorf("scan: session %q: %w", ev.ID, err)
 	}
 
@@ -69,11 +86,14 @@ func (sc *Scanner) scan(ctx context.Context, ev events.UploadComplete) error {
 	}
 
 	for res := range results {
-		if res.Status == clamd.RES_FOUND {
+		switch res.Status {
+		case clamd.RES_FOUND:
 			slog.Warn("scan: virus found", "key", ev.Key, "threat", res.Description)
 			sess.SetScanStatus(services.ScanStatusQuarantined)
 			metrics.UploadsFlagged.Add(1)
 			return nil
+		case clamd.RES_ERROR:
+			return fmt.Errorf("scan: clamd reported error for %q: %s", ev.Key, res.Description)
 		}
 	}
 

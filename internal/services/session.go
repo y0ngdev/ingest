@@ -29,6 +29,7 @@ const (
 	ScanStatusScanning    ScanStatus = "scanning"
 	ScanStatusClean       ScanStatus = "clean"
 	ScanStatusQuarantined ScanStatus = "quarantined"
+	ScanStatusError       ScanStatus = "error" // all retry attempts failed
 )
 
 var (
