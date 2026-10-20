@@ -1,12 +1,15 @@
 package services
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"hash"
 	"io"
 	"sync"
+
+	"ingest/internal/storage"
 
 	"github.com/google/uuid"
 )
@@ -52,14 +55,13 @@ func (s *Session) Offset() int64 {
 }
 
 // Key returns the storage key for this session.
-func (s *Session) Key() string {
-	return s.key
-}
+func (s *Session) Key() string { return s.key }
 
-// AppendChunk writes r into dst at the given byte offset, updating the running
-// hash and received count. Returns ErrOffsetMismatch when offset doesn't match
-// the current position, preventing gaps or overlapping writes.
-func (s *Session) AppendChunk(offset int64, r io.Reader, dst io.WriterAt) (int64, error) {
+// AppendChunk validates offset, then pipes r through a TeeReader so bytes
+// flow to backend.Append and the running SHA-256 hash simultaneously —
+// equivalent to io.MultiWriter(backendWriter, s.hash) but without needing a
+// concrete writer value.
+func (s *Session) AppendChunk(ctx context.Context, offset int64, r io.Reader, b storage.Backend) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -70,7 +72,9 @@ func (s *Session) AppendChunk(offset int64, r io.Reader, dst io.WriterAt) (int64
 		return 0, ErrOffsetMismatch
 	}
 
-	n, err := copyAt(io.TeeReader(r, s.hash), dst, offset)
+	// TeeReader feeds the same bytes into s.hash while backend.Append drains
+	// them to disk (or S3). One pass, zero extra allocations.
+	n, err := b.Append(ctx, s.key, offset, io.TeeReader(r, s.hash))
 	if err != nil {
 		return n, err
 	}
@@ -83,34 +87,11 @@ func (s *Session) AppendChunk(offset int64, r io.Reader, dst io.WriterAt) (int64
 }
 
 // Checksum returns the hex-encoded SHA-256 of all bytes received so far.
-// Only meaningful once Status == StatusComplete.
+// Meaningful only after Status == StatusComplete.
 func (s *Session) Checksum() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return hex.EncodeToString(s.hash.Sum(nil))
-}
-
-// copyAt drains r into w at the given offset, returning the byte count.
-func copyAt(r io.Reader, w io.WriterAt, offset int64) (int64, error) {
-	buf := make([]byte, 32*1024)
-	var written int64
-	for {
-		nr, readErr := r.Read(buf)
-		if nr > 0 {
-			nw, writeErr := w.WriteAt(buf[:nr], offset+written)
-			written += int64(nw)
-			if writeErr != nil {
-				return written, writeErr
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return written, readErr
-		}
-	}
-	return written, nil
 }
 
 // Store is an in-memory registry of active upload sessions.
@@ -123,7 +104,7 @@ func NewStore() *Store {
 	return &Store{sessions: make(map[string]*Session)}
 }
 
-// Create mints a new session with a UUID, registers it, and returns it.
+// Create mints a new session, registers it, and returns it.
 func (st *Store) Create(totalSize int64) *Session {
 	id := uuid.NewString()
 	s := newSession(id, totalSize, id)

@@ -55,3 +55,23 @@ func (l *LocalStorage) Stat(_ context.Context, key string) (int64, error) {
 func (l *LocalStorage) Delete(_ context.Context, key string) error {
 	return os.Remove(filepath.Join(l.dir, key))
 }
+
+// Append writes r into the file at dir/key starting at offset.
+// io.NewOffsetWriter wraps the *os.File so every Write lands at the right
+// position without seeking — the file cursor is never touched.
+func (l *LocalStorage) Append(_ context.Context, key string, offset int64, r io.Reader) (int64, error) {
+	f, err := os.OpenFile(filepath.Join(l.dir, key), os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return 0, fmt.Errorf("storage: open %q: %w", key, err)
+	}
+	defer f.Close()
+
+	n, err := io.Copy(io.NewOffsetWriter(f, offset), r)
+	if err != nil {
+		return n, fmt.Errorf("storage: write chunk at offset %d: %w", offset, err)
+	}
+	return n, nil
+}
+
+// Finalize is a no-op for local storage; writes are already durable.
+func (l *LocalStorage) Finalize(_ context.Context, _ string) error { return nil }
