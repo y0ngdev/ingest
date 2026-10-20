@@ -1,64 +1,121 @@
 package main
 
 import (
+	"context"
+	"expvar"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"ingest/internal/api"
 	"ingest/internal/dedup"
+	"ingest/internal/events"
 	"ingest/internal/lib"
+	"ingest/internal/middleware"
 	"ingest/internal/services"
 	"ingest/internal/storage"
+	"ingest/internal/worker"
 )
 
 func main() {
+	// --- Context with graceful shutdown ---
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// --- Storage ---
-	// To use any S3-compatible backend instead of local disk, swap these lines:
-	//
-	//   store, err := storage.NewS3(storage.S3Config{
-	//       Bucket:    lib.Getenv("S3_BUCKET", "ingest"),
-	//       Endpoint:  lib.Getenv("S3_ENDPOINT", ""),  // empty = AWS; set for MinIO/R2/B2/etc.
-	//       PathStyle: lib.Getenv("S3_PATH_STYLE", "") != "",
-	//   })
+	// Phase 4: swap storage.New("./uploads") for storage.NewS3(storage.S3Config{
+	//     Endpoint:  lib.Getenv("S3_ENDPOINT", ""),
+	//     Bucket:    lib.Getenv("S3_BUCKET", "ingest"),
+	//     AccessKey: lib.Getenv("S3_ACCESS_KEY", ""),
+	//     SecretKey: lib.Getenv("S3_SECRET_KEY", ""),
+	//     Secure:    lib.Getenv("S3_SECURE", "") != "",
+	// })
 	store, err := storage.New("./uploads")
 	if err != nil {
 		log.Fatalf("storage: %v", err)
 	}
 
-	// --- Session store + dedup index ---
+	// --- Event queue ---
+	queue := events.NewMemoryQueue(64)
+	worker.RegisterThumbnail(queue)
+
+	// Phase 6c: uncomment to enable virus scanning via ClamAV.
+	// scanner := worker.NewScanner(
+	//     lib.Getenv("CLAMD_ADDR", "unix:///var/run/clamav/clamd.ctl"),
+	//     services.NewStore(), store,
+	// )
+	// scanner.Register(queue)
+
+	go queue.Run(ctx)
+
+	// --- Core components ---
 	sessions := services.NewStore()
 	dedupIdx := dedup.New()
+	uploads := api.New(store, sessions, dedupIdx, queue)
 
-	// --- Handlers ---
-	uploads := api.New(store, sessions, dedupIdx)
+	// --- Middleware ---
+	rl := middleware.NewRateLimiter(20, 40) // 20 req/s, burst 40
+	authToken := lib.Getenv("AUTH_TOKEN", "")
 
 	// --- Routes ---
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", health)
+	mux.Handle("GET /debug/vars", expvar.Handler())
 
-	// Single-shot upload (Phase 1)
-	mux.HandleFunc("PUT /uploads/{id}", uploads.WriteUpload)
-	mux.HandleFunc("GET /uploads/{id}", uploads.GetUpload)
+	// Static pages — served from ./web/ relative to the working directory.
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.ServeFile(w, r, "./web/landing.html")
+			return
+		}
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("GET /demo", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "./web/demo.html")
+	})
 
-	// Resumable chunked upload (Phase 2)
 	mux.HandleFunc("POST /uploads", uploads.CreateUpload)
 	mux.HandleFunc("PATCH /uploads/{id}", uploads.AppendChunk)
 	mux.HandleFunc("HEAD /uploads/{id}", uploads.HeadUpload)
+	mux.HandleFunc("PUT /uploads/{id}", uploads.WriteUpload)
+	mux.HandleFunc("GET /uploads/{id}", uploads.GetUpload)
+
+	// Middleware stack (outermost → innermost):
+	//   RateLimit → BearerAuth → RequestID → mux
+	var handler http.Handler = mux
+	handler = middleware.RequestID(handler)
+	handler = middleware.BearerAuth(authToken)(handler)
+	handler = rl.Middleware(handler)
 
 	// --- Server ---
 	server := &http.Server{
 		Addr:              lib.Getenv("PORT", ":8080"),
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		// WriteTimeout intentionally 0: large uploads stream through here.
-		WriteTimeout: 0,
-		IdleTimeout:  60 * time.Second,
+		WriteTimeout:      0, // intentionally 0: large uploads stream through here
+		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("listening on %s", server.Addr)
-	log.Fatal(server.ListenAndServe())
+	go func() {
+		slog.Info("listening", "addr", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	slog.Info("shutting down")
+
+	shutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutCtx); err != nil {
+		log.Printf("shutdown: %v", err)
+	}
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {

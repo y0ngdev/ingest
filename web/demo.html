@@ -39,7 +39,7 @@
         <span class="text-[15px] font-medium tracking-tight">Ingest</span>
         <span class="text-[13px] text-slate ml-2 font-mono">/ demo</span>
       </div>
-      <a href="https://claude.ai/artifact/8zxzTR7BzWbyHn8FE6tp5Y" class="text-[14px] text-slate hover:text-paper transition-colors">Back to overview</a>
+      <a href="/" class="text-[14px] text-slate hover:text-paper transition-colors">Back to overview</a>
     </div>
   </header>
 
@@ -57,7 +57,7 @@
     <div id="dropzone" class="mt-10 border border-dashed border-white/15 rounded-lg p-10 text-center cursor-pointer hover:border-amber/50 transition-colors">
       <input type="file" id="fileInput" class="hidden">
       <p class="text-[15px] font-medium">Drop a file here, or click to choose one</p>
-      <p class="mt-1.5 text-[13px] text-slate">Stays local to your browser. Any file type or size.</p>
+      <p class="mt-1.5 text-[13px] text-slate">JPEG, PNG, GIF, WebP, PDF, or MP4. Max 512 MB.</p>
     </div>
 
     <!-- Upload panel -->
@@ -98,50 +98,40 @@
     </div>
 
     <p class="mt-6 text-[12px] text-slate/70 leading-[1.6] max-w-[52ch]">
-      This demo runs entirely in your browser: chunking, hashing, and dedup are simulated
-      client-side rather than hitting a real API. Upload the same file twice in this
-      browser to see the dedup check hit.
+      Chunks are sent to the real API running on this server. Upload the same file twice
+      to see the server-side dedup check hit. Accepted types: JPEG, PNG, GIF, WebP, PDF, MP4.
     </p>
   </main>
 
 <script>
 (function () {
-  const dropzone = document.getElementById('dropzone');
+  const dropzone  = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
-  const panel = document.getElementById('panel');
-  const filenameEl = document.getElementById('filename');
-  const filesizeEl = document.getElementById('filesize');
-  const bar = document.getElementById('bar');
-  const offsetEl = document.getElementById('offset');
-  const statusEl = document.getElementById('status');
-  const killBtn = document.getElementById('killBtn');
+  const panel     = document.getElementById('panel');
+  const filenameEl= document.getElementById('filename');
+  const filesizeEl= document.getElementById('filesize');
+  const bar       = document.getElementById('bar');
+  const offsetEl  = document.getElementById('offset');
+  const statusEl  = document.getElementById('status');
+  const killBtn   = document.getElementById('killBtn');
   const resumeBtn = document.getElementById('resumeBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const logEl = document.getElementById('log');
-  const resultEl = document.getElementById('result');
-  const resultBadge = document.getElementById('resultBadge');
-  const resultText = document.getElementById('resultText');
-  const resultHashEl = document.getElementById('resultHash');
+  const resetBtn  = document.getElementById('resetBtn');
+  const logEl     = document.getElementById('log');
+  const resultEl  = document.getElementById('result');
+  const resultBadge   = document.getElementById('resultBadge');
+  const resultText    = document.getElementById('resultText');
+  const resultHashEl  = document.getElementById('resultHash');
 
-  let seenHashes = [];
-  try {
-    seenHashes = JSON.parse(localStorage.getItem('ingest_demo_hashes') || '[]');
-  } catch (e) { seenHashes = []; }
-
-  function saveHash(h) {
-    seenHashes.push(h);
-    try { localStorage.setItem('ingest_demo_hashes', JSON.stringify(seenHashes)); } catch (e) {}
-  }
+  const CHUNK_SIZE = 256 * 1024; // 256 KB — small enough to show multiple chunks
 
   function fmtBytes(n) {
     if (n < 1024) return n + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
   }
-
   function fmt(n) { return n.toLocaleString('en-US'); }
 
-  function log(msg, cls) {
+  function appendLog(msg, cls) {
     const line = document.createElement('div');
     line.textContent = msg;
     if (cls) line.className = cls;
@@ -149,121 +139,175 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-amber/50'); });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-amber/50'));
-  dropzone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropzone.classList.remove('border-amber/50');
-    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-  });
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) handleFile(fileInput.files[0]);
-  });
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = (cls || 'text-slate') + ' font-mono';
+  }
 
-  async function sha256(buf) {
+  async function hexSha256(buf) {
     const digest = await crypto.subtle.digest('SHA-256', buf);
     return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  let uploadState = null;
+  // ---- drag-and-drop / file picker ----
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('border-amber/50'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-amber/50'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('border-amber/50');
+    if (e.dataTransfer.files[0]) startUpload(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) startUpload(fileInput.files[0]); });
 
-  async function handleFile(file) {
+  // ---- state ----
+  let sessionId  = null;
+  let uploadFile = null;
+  let abortCtrl  = null; // current in-flight PATCH
+
+  // ---- main entry ----
+  async function startUpload(file) {
     resetUI();
+    uploadFile = file;
     panel.classList.remove('hidden');
     filenameEl.textContent = file.name;
     filesizeEl.textContent = fmtBytes(file.size);
-    statusEl.textContent = 'hashing';
-    statusEl.className = 'text-slate font-mono';
+    setStatus('hashing…');
 
-    const buf = await file.arrayBuffer();
-    const hash = await sha256(buf);
+    // Hash the whole file client-side for display; server computes its own hash.
+    const hash = await hexSha256(await file.arrayBuffer());
 
-    if (seenHashes.includes(hash)) {
-      bar.style.width = '100%';
-      bar.className = 'h-full bg-resolve rounded-full';
-      offsetEl.textContent = 'offset ' + fmt(file.size) + ' / ' + fmt(file.size);
-      statusEl.textContent = 'deduplicated';
-      statusEl.className = 'text-resolve font-mono';
-      log('content hash matched an existing object — 0 bytes transferred', 'text-resolve');
-      showResult(true, hash);
-      resetBtn.classList.remove('hidden');
-      return;
+    // POST /uploads — create session, get ID
+    setStatus('connecting…');
+    let res;
+    try {
+      res = await fetch('/uploads', {
+        method: 'POST',
+        headers: { 'Upload-Length': file.size },
+      });
+    } catch (e) {
+      return showError('Could not reach server: ' + e.message);
     }
-
-    const totalSize = file.size || 1;
-    const chunkSize = Math.max(16 * 1024, Math.floor(totalSize / 28));
-    uploadState = { offset: 0, totalSize, chunkSize, hash, dropped: false, stoppedAt: null };
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return showError('Session error: ' + (body.error || res.status));
+    }
+    const data = await res.json();
+    sessionId = data.id;
+    appendLog('session · ' + sessionId.slice(0, 8) + '…');
 
     killBtn.classList.remove('hidden');
-    runChunkLoop();
+    await sendChunks(file, hash, 0);
   }
 
-  function runChunkLoop() {
-    const s = uploadState;
-    if (!s) return;
+  // ---- chunk loop ----
+  async function sendChunks(file, hash, startOffset) {
+    let offset = startOffset;
 
-    function step() {
-      if (s.dropped) return;
-      if (s.offset >= s.totalSize) return finishUpload();
+    while (offset < file.size) {
+      const chunk = file.slice(offset, offset + CHUNK_SIZE);
+      abortCtrl   = new AbortController();
 
-      const next = Math.min(s.totalSize, s.offset + s.chunkSize);
-      s.offset = next;
-      const pct = Math.round((s.offset / s.totalSize) * 100);
+      let res;
+      try {
+        res = await fetch('/uploads/' + sessionId, {
+          method:  'PATCH',
+          headers: { 'Upload-Offset': offset },
+          body:    chunk,
+          signal:  abortCtrl.signal,
+        });
+      } catch (e) {
+        if (e.name === 'AbortError') return; // user pressed kill — wait for resume
+        return showError('Network error: ' + e.message);
+      }
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return showError('Upload error ' + res.status + ': ' + (body.error || ''));
+      }
+
+      // Server echoes the confirmed offset in the Upload-Offset header.
+      const confirmed = parseInt(res.headers.get('Upload-Offset') || offset + chunk.size, 10);
+      offset = confirmed;
+
+      const pct = Math.min(100, Math.round((offset / file.size) * 100));
       bar.style.width = pct + '%';
-      offsetEl.textContent = 'offset ' + fmt(s.offset) + ' / ' + fmt(s.totalSize);
-      statusEl.textContent = 'uploading';
-      statusEl.className = 'text-amber font-mono';
-      log('chunk written · offset ' + fmt(s.offset));
+      offsetEl.textContent = 'offset ' + fmt(offset) + ' / ' + fmt(file.size);
+      setStatus('uploading', 'text-amber');
+      appendLog('chunk · offset ' + fmt(offset));
 
-      setTimeout(step, 90);
+      // 200 means the server returned a dedup result (last chunk was a duplicate).
+      if (res.status === 200) {
+        const body = await res.json();
+        return finishUpload(hash, body.deduplicated, body.id);
+      }
     }
-    step();
+
+    // All 204s, now complete.
+    finishUpload(hash, false, sessionId);
   }
 
+  // ---- kill / resume ----
   killBtn.addEventListener('click', () => {
-    if (!uploadState) return;
-    uploadState.dropped = true;
-    uploadState.stoppedAt = uploadState.offset;
-    statusEl.textContent = 'connection lost';
-    statusEl.className = 'text-danger font-mono';
-    log('— connection dropped at offset ' + fmt(uploadState.offset) + ' —', 'text-danger');
+    if (abortCtrl) abortCtrl.abort();
+    setStatus('connection lost', 'text-danger');
+    appendLog('— dropped at offset ' + fmt(parseInt(offsetEl.textContent.match(/offset ([\d,]+)/)?.[1]?.replace(/,/g, '') || 0)) + ' —', 'text-danger');
     killBtn.classList.add('hidden');
     resumeBtn.classList.remove('hidden');
   });
 
-  resumeBtn.addEventListener('click', () => {
-    if (!uploadState) return;
-    log('resuming from offset ' + fmt(uploadState.stoppedAt), 'text-amber');
-    uploadState.dropped = false;
+  resumeBtn.addEventListener('click', async () => {
     resumeBtn.classList.add('hidden');
+    setStatus('querying offset…');
+
+    // HEAD /uploads/{id} — ask the server where it got to.
+    // The client can't trust its own last offset after an abrupt disconnect.
+    let res;
+    try {
+      res = await fetch('/uploads/' + sessionId, { method: 'HEAD' });
+    } catch (e) {
+      return showError('Resume failed: ' + e.message);
+    }
+    const serverOffset = parseInt(res.headers.get('Upload-Offset') || '0', 10);
+    appendLog('resuming from server offset ' + fmt(serverOffset), 'text-amber');
+
     killBtn.classList.remove('hidden');
-    runChunkLoop();
+    const hash = resultHashEl.textContent.replace('sha256: ', '');
+    await sendChunks(uploadFile, hash, serverOffset);
   });
 
-  function finishUpload() {
-    statusEl.textContent = 'complete';
-    statusEl.className = 'text-resolve font-mono';
+  // ---- finish ----
+  function finishUpload(hash, deduped, canonicalId) {
+    bar.style.width = '100%';
+    setStatus('complete', 'text-resolve');
     killBtn.classList.add('hidden');
     resumeBtn.classList.add('hidden');
-    log('upload finalized, object stored', 'text-resolve');
-    saveHash(uploadState.hash);
-    showResult(false, uploadState.hash);
-    resetBtn.classList.remove('hidden');
-  }
+    appendLog('stored · key ' + canonicalId.slice(0, 8) + '…', 'text-resolve');
 
-  function showResult(deduped, hash) {
     resultEl.classList.remove('hidden');
+    resultHashEl.textContent = 'sha256: ' + hash;
+
     if (deduped) {
+      bar.className = 'h-full bg-resolve rounded-full';
+      setStatus('deduplicated', 'text-resolve');
       resultBadge.textContent = 'Deduplicated';
       resultBadge.className = 'inline-block text-[13px] font-mono px-3 py-1 rounded-md bg-resolve/10 text-resolve';
-      resultText.textContent = 'Identical content already existed from a prior upload in this browser — no new storage was written.';
+      resultText.textContent = 'Identical content already existed — 0 new bytes written to storage.';
     } else {
       resultBadge.textContent = 'Stored as new object';
       resultBadge.className = 'inline-block text-[13px] font-mono px-3 py-1 rounded-md bg-amber/10 text-amber';
-      resultText.textContent = 'Upload the same file again to see the dedup check catch it.';
+      resultText.textContent = 'Upload the same file again to see the server-side dedup check catch it.';
     }
-    resultHashEl.textContent = 'sha256: ' + hash;
+
+    resetBtn.classList.remove('hidden');
+  }
+
+  function showError(msg) {
+    setStatus('error', 'text-danger');
+    appendLog('✗ ' + msg, 'text-danger');
+    killBtn.classList.add('hidden');
+    resumeBtn.classList.add('hidden');
+    resetBtn.classList.remove('hidden');
   }
 
   function resetUI() {
@@ -274,7 +318,11 @@
     resetBtn.classList.add('hidden');
     killBtn.classList.add('hidden');
     resumeBtn.classList.add('hidden');
-    uploadState = null;
+    sessionId  = null;
+    uploadFile = null;
+    abortCtrl  = null;
+    setStatus('');
+    offsetEl.textContent = '';
   }
 
   resetBtn.addEventListener('click', () => {
