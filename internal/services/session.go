@@ -21,6 +21,16 @@ const (
 	StatusComplete Status = "complete"
 )
 
+// ScanStatus tracks the async virus-scan lifecycle for a completed upload.
+type ScanStatus string
+
+const (
+	ScanStatusNone        ScanStatus = ""
+	ScanStatusScanning    ScanStatus = "scanning"
+	ScanStatusClean       ScanStatus = "clean"
+	ScanStatusQuarantined ScanStatus = "quarantined"
+)
+
 var (
 	ErrNotFound        = errors.New("session not found")
 	ErrOffsetMismatch  = errors.New("upload offset mismatch")
@@ -28,13 +38,14 @@ var (
 )
 
 type Session struct {
-	ID        string
-	TotalSize int64
-	received  int64
-	hash      hash.Hash
-	Status    Status
-	mu        sync.Mutex
-	key       string
+	ID         string
+	TotalSize  int64
+	received   int64
+	hash       hash.Hash
+	Status     Status
+	ScanStatus ScanStatus
+	mu         sync.Mutex
+	key        string
 }
 
 func newSession(id string, totalSize int64, key string) *Session {
@@ -84,6 +95,14 @@ func (s *Session) AppendChunk(ctx context.Context, offset int64, r io.Reader, b 
 		s.Status = StatusComplete
 	}
 	return n, nil
+}
+
+// SetScanStatus updates the scan status under the session lock.
+// Called by the async scan worker after ClamAV finishes.
+func (s *Session) SetScanStatus(st ScanStatus) {
+	s.mu.Lock()
+	s.ScanStatus = st
+	s.mu.Unlock()
 }
 
 // Checksum returns the hex-encoded SHA-256 of all bytes received so far.
