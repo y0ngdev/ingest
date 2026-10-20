@@ -7,172 +7,138 @@ import (
 	"io"
 	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-// multipartUpload holds the state for an in-progress S3 multipart upload.
+// multipartUpload holds the state for an in-progress multipart upload.
 type multipartUpload struct {
 	uploadID string
-	parts    []types.CompletedPart
-	nextPart int32 // 1-based part number
+	parts    []minio.CompletePart
+	nextPart int // 1-based part number
 }
 
 // S3Config configures an S3-compatible backend.
-// Credentials and region are read from the environment / shared config
-// (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, ~/.aws/config).
+// Works with AWS S3, MinIO, Cloudflare R2, Backblaze B2, and any service
+// that speaks the S3 REST API.
 type S3Config struct {
-	Bucket string
-	// Endpoint overrides the default AWS endpoint, enabling any S3-compatible
-	// service: MinIO ("http://localhost:9000"), Cloudflare R2
-	// ("https://<account>.r2.cloudflarestorage.com"), Backblaze B2, etc.
-	// Leave empty to use standard AWS S3.
-	Endpoint string
-	// PathStyle forces path-style addressing (endpoint/bucket/key).
-	// Required for MinIO and most non-AWS providers; ignored when Endpoint
-	// is empty.
-	PathStyle bool
+	// Endpoint is the host[:port] of the object store, e.g.:
+	//   "localhost:9000"                          (MinIO, local)
+	//   "s3.amazonaws.com"                        (AWS S3)
+	//   "<account>.r2.cloudflarestorage.com"      (Cloudflare R2)
+	Endpoint  string
+	Bucket    string
+	AccessKey string
+	SecretKey string
+	// Secure enables TLS. Set false only for local dev (plain HTTP).
+	Secure bool
+	// Region is optional; defaults to "us-east-1" when empty.
+	Region string
 }
 
-// S3Backend implements Backend against an S3-compatible bucket.
+// S3Backend implements Backend against any S3-compatible object store.
 //
 // Chunked lifecycle (PATCH path):
-//   Append × N  →  CreateMultipartUpload (on first chunk) + UploadPart × N
+//   Append × N  →  NewMultipartUpload (on first chunk) + PutObjectPart × N
 //   Finalize    →  CompleteMultipartUpload
 //
 // Single-shot lifecycle (PUT path):
 //   Store  →  PutObject
 type S3Backend struct {
-	client *s3.Client
+	core   *minio.Core
 	bucket string
 	mu     sync.Mutex
 	active map[string]*multipartUpload // storage key → in-progress upload
 }
 
-// NewS3 builds an S3-compatible backend from cfg.
+// NewS3 builds a backend from cfg. Credentials are explicit constructor
+// params — no environment-specific credential chain.
 func NewS3(cfg S3Config) (*S3Backend, error) {
-	awsCfg, err := config.LoadDefaultConfig(context.Background())
+	core, err := minio.NewCore(cfg.Endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Secure: cfg.Secure,
+		Region: cfg.Region,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("s3: load config: %w", err)
-	}
-	opts := []func(*s3.Options){}
-	if cfg.Endpoint != "" {
-		opts = append(opts, func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(cfg.Endpoint)
-			o.UsePathStyle = cfg.PathStyle
-		})
+		return nil, fmt.Errorf("s3: create client: %w", err)
 	}
 	return &S3Backend{
-		client: s3.NewFromConfig(awsCfg, opts...),
+		core:   core,
 		bucket: cfg.Bucket,
 		active: make(map[string]*multipartUpload),
 	}, nil
 }
 
 // Store uploads the full contents of r in a single PutObject call.
+// Pass -1 as size to let the SDK handle unknown-length bodies.
 func (b *S3Backend) Store(ctx context.Context, key string, r io.Reader) error {
-	// PutObject needs a seekable or sized body, so we buffer into memory.
-	// For large single-shot uploads the PATCH path (Append+Finalize) is
-	// preferred because it streams chunk-by-chunk via multipart upload.
-	body, err := io.ReadAll(r)
+	_, err := b.core.Client.PutObject(ctx, b.bucket, key, r, -1, minio.PutObjectOptions{})
 	if err != nil {
-		return fmt.Errorf("s3: read body: %w", err)
-	}
-	_, err = b.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:        aws.String(b.bucket),
-		Key:           aws.String(key),
-		Body:          bytes.NewReader(body),
-		ContentLength: aws.Int64(int64(len(body))),
-	})
-	if err != nil {
-		return fmt.Errorf("s3: put object %q: %w", key, err)
+		return fmt.Errorf("s3: put %q: %w", key, err)
 	}
 	return nil
 }
 
 func (b *S3Backend) Retrieve(ctx context.Context, key string) (io.ReadCloser, error) {
-	out, err := b.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(key),
-	})
+	obj, err := b.core.Client.GetObject(ctx, b.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("s3: get object %q: %w", key, err)
+		return nil, fmt.Errorf("s3: get %q: %w", key, err)
 	}
-	return out.Body, nil
+	return obj, nil
 }
 
 func (b *S3Backend) Stat(ctx context.Context, key string) (int64, error) {
-	out, err := b.client.HeadObject(ctx, &s3.HeadObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(key),
-	})
+	info, err := b.core.Client.StatObject(ctx, b.bucket, key, minio.StatObjectOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("s3: head object %q: %w", key, err)
+		return 0, fmt.Errorf("s3: stat %q: %w", key, err)
 	}
-	if out.ContentLength == nil {
-		return 0, nil
-	}
-	return *out.ContentLength, nil
+	return info.Size, nil
 }
 
 func (b *S3Backend) Delete(ctx context.Context, key string) error {
-	_, err := b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(b.bucket),
-		Key:    aws.String(key),
-	})
+	err := b.core.Client.RemoveObject(ctx, b.bucket, key, minio.RemoveObjectOptions{})
 	if err != nil {
-		return fmt.Errorf("s3: delete object %q: %w", key, err)
+		return fmt.Errorf("s3: remove %q: %w", key, err)
 	}
 	return nil
 }
 
 // Append uploads r as the next part of a multipart upload.
+// The first call for a given key starts the multipart session;
+// subsequent calls add parts in order.
 //
-// The first call for a given key triggers CreateMultipartUpload; subsequent
-// calls add parts. offset is accepted for interface compatibility but S3
-// determines physical placement by part number — the session layer ensures
-// parts arrive in order.
-//
-// S3 requires part bodies to be buffered so ContentLength is known up front
-// (streaming readers have no known size). Parts ≥ 5 MB are required by S3
-// for all but the final part — the caller is responsible for sizing chunks.
+// S3 requires each part (except the last) to be at least 5 MB —
+// the caller is responsible for sizing chunks appropriately.
 func (b *S3Backend) Append(ctx context.Context, key string, _ int64, r io.Reader) (int64, error) {
-	mp, partNum, err := b.getOrCreateMultipart(ctx, key)
+	mp, partNum, err := b.getOrCreate(ctx, key)
 	if err != nil {
 		return 0, err
 	}
 
+	// Buffer the chunk: PutObjectPart needs a known content length.
 	body, err := io.ReadAll(r)
 	if err != nil {
 		return 0, fmt.Errorf("s3: read chunk for part %d: %w", partNum, err)
 	}
 
-	out, err := b.client.UploadPart(ctx, &s3.UploadPartInput{
-		Bucket:        aws.String(b.bucket),
-		Key:           aws.String(key),
-		UploadId:      aws.String(mp.uploadID),
-		PartNumber:    aws.Int32(partNum),
-		Body:          bytes.NewReader(body),
-		ContentLength: aws.Int64(int64(len(body))),
-	})
+	part, err := b.core.PutObjectPart(ctx, b.bucket, key, mp.uploadID, partNum,
+		bytes.NewReader(body), int64(len(body)), minio.PutObjectPartOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("s3: upload part %d for %q: %w", partNum, key, err)
+		return 0, fmt.Errorf("s3: upload part %d of %q: %w", partNum, key, err)
 	}
 
 	b.mu.Lock()
-	mp.parts = append(mp.parts, types.CompletedPart{
-		ETag:       out.ETag,
-		PartNumber: aws.Int32(partNum),
+	mp.parts = append(mp.parts, minio.CompletePart{
+		PartNumber: part.PartNumber,
+		ETag:       part.ETag,
 	})
 	b.mu.Unlock()
 
 	return int64(len(body)), nil
 }
 
-// Finalize calls CompleteMultipartUpload, assembling all uploaded parts into
-// the final S3 object. Must be called exactly once after the last Append.
+// Finalize calls CompleteMultipartUpload, assembling all parts into the
+// final object. Must be called exactly once after the last Append.
 func (b *S3Backend) Finalize(ctx context.Context, key string) error {
 	b.mu.Lock()
 	mp, ok := b.active[key]
@@ -183,36 +149,26 @@ func (b *S3Backend) Finalize(ctx context.Context, key string) error {
 	delete(b.active, key)
 	b.mu.Unlock()
 
-	_, err := b.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
-		Bucket:   aws.String(b.bucket),
-		Key:      aws.String(key),
-		UploadId: aws.String(mp.uploadID),
-		MultipartUpload: &types.CompletedMultipartUpload{
-			Parts: mp.parts,
-		},
-	})
+	_, err := b.core.CompleteMultipartUpload(ctx, b.bucket, key, mp.uploadID, mp.parts, minio.PutObjectOptions{})
 	if err != nil {
 		return fmt.Errorf("s3: complete multipart upload %q: %w", key, err)
 	}
 	return nil
 }
 
-// getOrCreateMultipart returns the in-progress upload for key (creating it on
-// first call) and the part number to use for the next UploadPart call.
-func (b *S3Backend) getOrCreateMultipart(ctx context.Context, key string) (*multipartUpload, int32, error) {
+// getOrCreate returns the in-progress multipart for key, creating it on the
+// first call, and returns the part number to use for the next PutObjectPart.
+func (b *S3Backend) getOrCreate(ctx context.Context, key string) (*multipartUpload, int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	mp, ok := b.active[key]
 	if !ok {
-		out, err := b.client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{
-			Bucket: aws.String(b.bucket),
-			Key:    aws.String(key),
-		})
+		uploadID, err := b.core.NewMultipartUpload(ctx, b.bucket, key, minio.PutObjectOptions{})
 		if err != nil {
-			return nil, 0, fmt.Errorf("s3: create multipart upload %q: %w", key, err)
+			return nil, 0, fmt.Errorf("s3: new multipart upload %q: %w", key, err)
 		}
-		mp = &multipartUpload{uploadID: *out.UploadId, nextPart: 1}
+		mp = &multipartUpload{uploadID: uploadID, nextPart: 1}
 		b.active[key] = mp
 	}
 
