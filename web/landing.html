@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ingest — uploads that survive bad networks</title>
+<title>Ingest — resumable file uploads</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,12 +13,13 @@
     theme: {
       extend: {
         colors: {
-          ink: '#12151A',
-          paper: '#EDEAE3',
-          slate: '#868D96',
-          amber: '#F2A93C',
-          resolve: '#3ECF8E',
-          panel: '#191D23',
+          ink:   '#07080A',
+          lift:  '#0E1016',
+          hi:    '#EFEFEF',
+          lo:    '#4E5160',
+          blue:  '#4C8EFF',
+          green: '#2ECC97',
+          red:   '#E05555',
         },
         fontFamily: {
           sans: ['"IBM Plex Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -29,260 +30,215 @@
   };
 </script>
 </head>
-<body class="bg-ink text-paper font-sans" style="background:#12151A; padding-bottom:env(safe-area-inset-bottom,0px);">
+<body class="bg-ink text-hi font-sans" style="background:#07080A; padding-bottom:env(safe-area-inset-bottom,0px);">
 
-  <!-- Nav -->
-  <header class="sticky top-0 z-10 border-b border-white/10 bg-ink/95 backdrop-blur-sm" style="padding-top:env(safe-area-inset-top,0px);">
+  <header class="sticky top-0 z-20 border-b border-white/[0.05] bg-ink/90 backdrop-blur-md" style="padding-top:env(safe-area-inset-top,0px);">
     <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
-        <div class="size-2.5 rounded-full bg-amber"></div>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <rect x="1" y="1" width="16" height="16" rx="4" stroke="#4C8EFF" stroke-width="1.5"/>
+          <path d="M9 5v8M6 10l3 3 3-3" stroke="#4C8EFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
         <span class="text-[15px] font-medium">Ingest</span>
       </div>
-      <nav class="hidden sm:flex items-center gap-8 text-[13px] text-slate">
-        <a href="#how" class="hover:text-paper transition-colors">How it works</a>
-        <a href="#use-cases" class="hover:text-paper transition-colors">Use cases</a>
-        <a href="#docs" class="hover:text-paper transition-colors">Docs</a>
+      <nav class="hidden sm:flex items-center gap-8 text-[13px] text-lo">
+        <a href="#how" class="hover:text-hi transition-colors">How it works</a>
+        <a href="#use-cases" class="hover:text-hi transition-colors">Use cases</a>
+        <a href="#docs" class="hover:text-hi transition-colors">Docs</a>
       </nav>
-      <a href="/demo" class="text-[13px] font-medium bg-paper text-ink px-4 py-2 rounded-md hover:bg-white transition-colors">Try the demo</a>
+      <a href="/demo" class="text-[13px] font-medium bg-blue text-white px-4 py-2 rounded-lg hover:opacity-90 transition-opacity">Try it live</a>
     </div>
   </header>
 
   <!-- Hero -->
-  <section class="max-w-5xl mx-auto px-6 pt-20 pb-20">
-    <div class="grid md:grid-cols-2 gap-16 items-center">
+  <section class="max-w-5xl mx-auto px-6 pt-20 pb-24">
+    <div class="grid md:grid-cols-[1fr_400px] gap-16 items-center">
       <div>
-        <div class="inline-flex items-center gap-2 text-[12px] font-mono text-amber border border-amber/30 bg-amber/5 px-3 py-1.5 rounded-full mb-6">
-          <span class="size-1.5 rounded-full bg-amber"></span>
-          Resumable Upload API
-        </div>
-        <h1 class="text-[42px] sm:text-[52px] leading-[1.06] font-medium text-balance">
-          Uploads that pick up where the connection dropped.
+        <h1 class="text-[56px] sm:text-[68px] leading-[1.02] font-semibold text-balance">
+          A file upload at 80% should stay at 80%.
         </h1>
-        <p class="mt-5 text-[16px] leading-[1.75] text-slate text-pretty max-w-[42ch]">
-          A file upload API built for the networks your users actually have. Every chunk is
-          tracked by byte offset — a lost connection at 80% never means starting over at 0%.
+        <p class="mt-6 text-[17px] leading-[1.7] text-lo text-pretty max-w-[40ch]">
+          Ingest tracks every chunk by byte offset. Drop the connection, reconnect,
+          and the server picks up from the last confirmed byte — not from zero.
         </p>
-        <div class="mt-8 flex items-center gap-5">
-          <a href="/demo" class="bg-amber text-ink text-[14px] font-medium px-5 py-2.5 rounded-md hover:brightness-110 transition-all">
+        <div class="mt-10 flex items-center gap-6">
+          <a href="/demo" class="bg-blue text-white text-[14px] font-medium px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity">
             Try it live
           </a>
-          <a href="#docs" class="text-[14px] text-paper/70 hover:text-paper transition-colors">
-            Read the docs →
+          <a href="#docs" class="text-[14px] text-lo hover:text-hi transition-colors">
+            Read the docs
           </a>
         </div>
-        <p class="mt-4 text-[12px] font-mono text-slate/60">Free to integrate · No credit card required</p>
+        <p class="mt-5 text-[12px] font-mono text-lo/50">Free to integrate · No credit card required</p>
       </div>
 
-      <!-- Live upload demo widget -->
-      <div class="bg-panel border border-white/10 rounded-xl overflow-hidden">
-        <div class="border-b border-white/10 px-5 py-3 flex items-center gap-2">
-          <div class="size-2 rounded-full bg-white/20"></div>
-          <div class="size-2 rounded-full bg-white/20"></div>
-          <div class="size-2 rounded-full bg-white/20"></div>
-          <span class="ml-auto text-[11px] font-mono text-slate">upload demo</span>
+      <!-- Live upload widget -->
+      <div class="bg-lift border border-white/[0.07] rounded-xl overflow-hidden font-mono text-[12px]">
+        <div class="px-4 py-3 border-b border-white/[0.07] flex items-center justify-between">
+          <span class="text-lo truncate mr-4">kyc_passport_scan.pdf</span>
+          <span class="text-lo tabular-nums shrink-0">2.1 MB</span>
         </div>
-        <div class="p-6">
-          <div class="flex items-center gap-3 mb-5">
-            <div class="size-9 rounded-md bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-slate">
-                <path d="M9.5 1H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5.5L9.5 1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-                <path d="M9 1v5h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="text-[13px] font-mono text-paper/90 truncate" id="filename">kyc_passport_scan.pdf</div>
-              <div class="text-[11px] font-mono text-slate mt-0.5 tabular-nums" id="filesize">2.1 MB</div>
-            </div>
+        <div class="px-4 pt-4 pb-4">
+          <div class="h-[3px] rounded-full bg-white/[0.06] overflow-hidden mb-3">
+            <div id="bar" class="h-full rounded-full" style="width:0%; background:#4C8EFF; transition: width 0.4s linear;"></div>
           </div>
-          <div class="h-1.5 rounded-full bg-white/5 overflow-hidden">
-            <div id="bar" class="h-full bg-amber rounded-full" style="width:0%; transition: width 0.4s linear;"></div>
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-lo tabular-nums" id="offset">0 / 2,202,009 bytes</span>
+            <span class="tabular-nums" id="status" style="color:#4E5160">connecting</span>
           </div>
-          <div class="mt-3 flex items-center justify-between">
-            <span id="offset" class="text-[11px] font-mono text-slate tabular-nums">offset 0 / 2,202,009</span>
-            <span id="status" class="text-[11px] font-mono text-slate">connecting</span>
-          </div>
-          <div class="mt-4 space-y-1 min-h-[3.5rem]" id="eventLog"></div>
+          <div id="stream" class="space-y-1.5 text-[11px] min-h-[4rem]"></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Trust bar -->
-  <section class="border-t border-white/10">
-    <div class="max-w-5xl mx-auto px-6 py-5">
-      <div class="flex flex-wrap items-center gap-x-8 gap-y-2 text-[12px] font-mono text-slate/70">
-        <span>TUS-compatible protocol</span>
-        <span class="text-white/15 select-none">·</span>
-        <span>S3-native storage</span>
-        <span class="text-white/15 select-none">·</span>
-        <span>Chunk-aware deduplication</span>
-        <span class="text-white/15 select-none">·</span>
-        <span>Async virus scanning</span>
-        <span class="text-white/15 select-none">·</span>
-        <span>Byte-accurate resumption</span>
-      </div>
-    </div>
-  </section>
+  <!-- Feature tags -->
+  <div class="max-w-5xl mx-auto px-6 pb-24">
+    <p class="text-[12px] font-mono text-lo/50 flex flex-wrap gap-x-6 gap-y-1.5">
+      <span>TUS-compatible</span>
+      <span>S3-native</span>
+      <span>Chunk deduplication</span>
+      <span>Async virus scanning</span>
+      <span>Byte-accurate resumption</span>
+    </p>
+  </div>
 
-  <!-- Problem framing -->
-  <section class="border-t border-white/10">
-    <div class="max-w-5xl mx-auto px-6 py-20">
-      <p class="text-[20px] sm:text-[22px] leading-[1.75] max-w-[52ch] text-paper/85 text-pretty">
-        Most upload APIs assume a stable connection. On a 3G link in a moving vehicle
-        or a 4G tower shared by hundreds of people, that assumption breaks constantly —
-        and every naive implementation makes users pay for it by restarting a 20 MB
-        upload from zero, again.
+  <!-- Problem -->
+  <section class="border-t border-white/[0.07]">
+    <div class="max-w-5xl mx-auto px-6 py-24">
+      <p class="text-[21px] leading-[1.75] max-w-[50ch] text-hi/75 text-pretty">
+        Most upload clients assume the connection holds. On mobile — which is most of
+        your users, most of the time — that assumption fails constantly. When it does,
+        the progress bar resets to zero. Your user tries again. They blame your app
+        for the network.
       </p>
     </div>
   </section>
 
   <!-- How it works -->
-  <section id="how" class="border-t border-white/10">
-    <div class="max-w-5xl mx-auto px-6 py-20">
-      <p class="text-[11px] font-mono text-slate uppercase tracking-widest mb-12">How it works</p>
-      <div class="grid sm:grid-cols-3 gap-px bg-white/10 rounded-xl overflow-hidden">
-        <div class="bg-ink p-7">
-          <div class="text-[11px] font-mono text-amber mb-5 tabular-nums">01</div>
-          <h3 class="text-[15px] font-medium mb-2.5 text-balance">Chunks tracked by byte offset, not attempt.</h3>
-          <p class="text-[13px] leading-[1.7] text-slate text-pretty">A client asks the API where it left off and resumes from that exact byte — no chunk is ever re-sent unnecessarily.</p>
+  <section id="how" class="border-t border-white/[0.07]">
+    <div class="max-w-5xl mx-auto px-6 py-24">
+      <h2 class="text-[13px] font-mono text-lo mb-16">How it works</h2>
+      <div class="grid sm:grid-cols-3 sm:divide-x divide-white/[0.07]">
+        <div class="sm:pr-10">
+          <span class="block text-[11px] font-mono text-blue mb-6 tabular-nums">01</span>
+          <h3 class="text-[16px] font-medium leading-snug mb-3 text-balance">The server always knows the last confirmed byte.</h3>
+          <p class="text-[13px] leading-[1.7] text-lo text-pretty">On reconnect, the client sends a HEAD request. The server replies with the confirmed offset. The upload resumes there — not from a client-side estimate.</p>
         </div>
-        <div class="bg-ink p-7">
-          <div class="text-[11px] font-mono text-slate/50 mb-5 tabular-nums">02</div>
-          <h3 class="text-[15px] font-medium mb-2.5 text-balance">Every file hashed and deduplicated on arrival.</h3>
-          <p class="text-[13px] leading-[1.7] text-slate text-pretty">Identical content is never stored twice, whether re-uploaded by the same user or a different one.</p>
+        <div class="sm:px-10 pt-10 sm:pt-0">
+          <span class="block text-[11px] font-mono text-lo/40 mb-6 tabular-nums">02</span>
+          <h3 class="text-[16px] font-medium leading-snug mb-3 text-balance">Same file, one copy.</h3>
+          <p class="text-[13px] leading-[1.7] text-lo text-pretty">Every upload is SHA-256 hashed on arrival. Upload the same file again and the server returns the existing object key — no bytes written.</p>
         </div>
-        <div class="bg-ink p-7">
-          <div class="text-[11px] font-mono text-slate/50 mb-5 tabular-nums">03</div>
-          <h3 class="text-[15px] font-medium mb-2.5 text-balance">Scanning and processing off the request path.</h3>
-          <p class="text-[13px] leading-[1.7] text-slate text-pretty">Antivirus scanning, thumbnailing, and metadata extraction run asynchronously — your users aren't waiting on them.</p>
+        <div class="sm:pl-10 pt-10 sm:pt-0">
+          <span class="block text-[11px] font-mono text-lo/40 mb-6 tabular-nums">03</span>
+          <h3 class="text-[16px] font-medium leading-snug mb-3 text-balance">Scanning runs after the upload, not before the response.</h3>
+          <p class="text-[13px] leading-[1.7] text-lo text-pretty">Antivirus, thumbnailing, and metadata extraction run asynchronously. The upload response comes back immediately.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Code sample -->
-  <section id="docs" class="border-t border-white/10">
-    <div class="max-w-5xl mx-auto px-6 py-20">
-      <p class="text-[11px] font-mono text-slate uppercase tracking-widest mb-8">Integrate in a few lines</p>
-      <div class="bg-panel border border-white/10 rounded-xl overflow-hidden">
-        <div class="border-b border-white/10 px-5 py-3 flex items-center gap-2">
-          <div class="size-2 rounded-full bg-white/20"></div>
-          <div class="size-2 rounded-full bg-white/20"></div>
-          <div class="size-2 rounded-full bg-white/20"></div>
-          <span class="ml-3 text-[11px] font-mono text-slate">terminal</span>
-        </div>
-        <div class="p-6 overflow-x-auto">
-          <pre class="font-mono text-[12px] leading-[2] text-paper/80 tabular-nums"><span class="text-slate"># 1. Create an upload session</span>
-curl -X POST https://api.ingest.dev/uploads \
-  -H "Authorization: Bearer $INGEST_KEY" \
-  -H "Upload-Length: 2202009"
+  <!-- Code -->
+  <section id="docs" class="border-t border-white/[0.07]">
+    <div class="max-w-5xl mx-auto px-6 py-24">
+      <h2 class="text-[13px] font-mono text-lo mb-8">Three requests. That's the protocol.</h2>
+      <div class="bg-lift border border-white/[0.07] rounded-xl overflow-x-auto">
+        <pre class="font-mono text-[12px] leading-[2.1] text-hi/70 p-6"><span class="text-lo"># 1. Create an upload session</span>
+<span class="text-hi/90">curl</span> -X POST https://api.ingest.dev/uploads \
+  -H <span class="text-green">"Authorization: Bearer $INGEST_KEY"</span> \
+  -H <span class="text-green">"Upload-Length: 2202009"</span>
 
-<span class="text-slate"># 2. Resume from the server-confirmed offset</span>
-curl -X PATCH https://api.ingest.dev/uploads/up_8f2a1c \
-  -H "Authorization: Bearer $INGEST_KEY" \
-  -H "Upload-Offset: 1583200" \
+<span class="text-lo"># 2. Resume from the server-confirmed offset</span>
+<span class="text-hi/90">curl</span> -X PATCH https://api.ingest.dev/uploads/up_8f2a1c \
+  -H <span class="text-green">"Authorization: Bearer $INGEST_KEY"</span> \
+  -H <span class="text-green">"Upload-Offset: 1583200"</span> \
   --data-binary @remaining_chunk.bin
 
-<span class="text-slate"># 3. Query offset after a dropped connection</span>
-curl -I https://api.ingest.dev/uploads/up_8f2a1c \
-  -H "Authorization: Bearer $INGEST_KEY"
-<span class="text-resolve"># → Upload-Offset: 1583200</span></pre>
-        </div>
+<span class="text-lo"># 3. Query confirmed offset after a dropout</span>
+<span class="text-hi/90">curl</span> -I https://api.ingest.dev/uploads/up_8f2a1c
+<span class="text-blue"># → Upload-Offset: 1583200</span></pre>
       </div>
     </div>
   </section>
 
   <!-- Use cases -->
-  <section id="use-cases" class="border-t border-white/10">
-    <div class="max-w-5xl mx-auto px-6 py-20">
-      <p class="text-[11px] font-mono text-slate uppercase tracking-widest mb-10">Built for</p>
-      <div class="grid sm:grid-cols-3 gap-5">
-        <div class="bg-panel border border-white/10 rounded-xl p-6">
-          <div class="size-8 rounded-lg bg-amber/10 border border-amber/20 flex items-center justify-center mb-5">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-amber">
-              <rect x="2" y="4" width="12" height="9" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
-              <path d="M5 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" stroke="currentColor" stroke-width="1.2"/>
-              <path d="M8 8v.01M6 8v.01M10 8v.01" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <p class="font-medium text-[14px] mb-2 text-balance">KYC and identity verification</p>
-          <p class="text-[13px] leading-[1.7] text-slate text-pretty">ID scans and proof-of-address documents, scanned and audit-logged automatically.</p>
+  <section id="use-cases" class="border-t border-white/[0.07]">
+    <div class="max-w-5xl mx-auto px-6 py-24">
+      <h2 class="text-[13px] font-mono text-lo mb-16">Built for</h2>
+      <div class="grid sm:grid-cols-3 sm:divide-x divide-white/[0.07]">
+        <div class="sm:pr-10">
+          <h3 class="text-[15px] font-medium mb-2.5 text-balance">KYC and identity verification</h3>
+          <p class="text-[13px] leading-[1.7] text-lo text-pretty">Your user is photographing their ID in a basement with one bar of signal. Three dropped connections later, Ingest has the document. You have the verified session.</p>
         </div>
-        <div class="bg-panel border border-white/10 rounded-xl p-6">
-          <div class="size-8 rounded-lg bg-amber/10 border border-amber/20 flex items-center justify-center mb-5">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-amber">
-              <path d="M2 12V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7" stroke="currentColor" stroke-width="1.2"/>
-              <path d="M1 12h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-              <path d="M6 8.5l1.5 1.5 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <p class="font-medium text-[14px] mb-2 text-balance">Marketplaces</p>
-          <p class="text-[13px] leading-[1.7] text-slate text-pretty">Sellers uploading product photos and video from wherever they happen to be.</p>
+        <div class="sm:px-10 pt-10 sm:pt-0">
+          <h3 class="text-[15px] font-medium mb-2.5 text-balance">Marketplaces</h3>
+          <p class="text-[13px] leading-[1.7] text-lo text-pretty">A seller shoots product video from the warehouse. The upload hits a dead zone halfway through. It picks up when they walk back outside.</p>
         </div>
-        <div class="bg-panel border border-white/10 rounded-xl p-6">
-          <div class="size-8 rounded-lg bg-amber/10 border border-amber/20 flex items-center justify-center mb-5">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-amber">
-              <circle cx="8" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/>
-              <path d="M2.5 14c0-2.5 2.46-4.5 5.5-4.5s5.5 2 5.5 4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <p class="font-medium text-[14px] mb-2 text-balance">Field operations</p>
-          <p class="text-[13px] leading-[1.7] text-slate text-pretty">Reports and media captured offline or on unreliable connections, synced when possible.</p>
+        <div class="sm:pl-10 pt-10 sm:pt-0">
+          <h3 class="text-[15px] font-medium mb-2.5 text-balance">Field operations</h3>
+          <p class="text-[13px] leading-[1.7] text-lo text-pretty">Workers capture media offline. When signal returns — hours later, maybe — pending uploads continue from the last confirmed byte.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- CTA -->
-  <section class="border-t border-white/10">
-    <div class="max-w-5xl mx-auto px-6 py-24 text-center">
-      <h2 class="text-[30px] sm:text-[38px] font-medium max-w-[22ch] mx-auto leading-[1.15] text-balance">
-        Stop making your users restart their uploads.
+  <section class="border-t border-white/[0.07]">
+    <div class="max-w-5xl mx-auto px-6 py-28">
+      <h2 class="text-[36px] sm:text-[52px] font-semibold leading-[1.08] max-w-[18ch] text-balance">
+        Ship resumable uploads this week.
       </h2>
-      <p class="mt-4 text-[15px] text-slate text-pretty">Try it with a real file. Nothing leaves your browser.</p>
-      <div class="mt-8 flex items-center justify-center gap-5">
-        <a href="/demo" class="inline-block bg-amber text-ink text-[14px] font-medium px-6 py-3 rounded-md hover:brightness-110 transition-all">
-          Upload a File
+      <p class="mt-5 text-[15px] text-lo text-pretty max-w-[42ch]">The API handles session state, chunk tracking, and deduplication. You write the upload loop.</p>
+      <div class="mt-10 flex items-center gap-6">
+        <a href="/demo" class="inline-block bg-blue text-white text-[14px] font-medium px-6 py-3 rounded-lg hover:opacity-90 transition-opacity">
+          Try it live
         </a>
-        <a href="#docs" class="text-[14px] text-paper/70 hover:text-paper transition-colors">Read the docs →</a>
+        <a href="#docs" class="text-[14px] text-lo hover:text-hi transition-colors">
+          Read the docs
+        </a>
       </div>
-      <p class="mt-4 text-[12px] font-mono text-slate/50">Free to integrate · No credit card required</p>
+      <p class="mt-5 text-[12px] font-mono text-lo/40">Free to integrate · No credit card required</p>
     </div>
   </section>
 
-  <footer class="border-t border-white/10">
+  <footer class="border-t border-white/[0.07]">
     <div class="max-w-5xl mx-auto px-6 py-8 flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-2">
-        <div class="size-2 rounded-full bg-amber/50"></div>
-        <span class="text-[13px] text-slate">Ingest</span>
+        <svg width="13" height="13" viewBox="0 0 18 18" fill="none" opacity="0.5">
+          <rect x="1" y="1" width="16" height="16" rx="4" stroke="#4C8EFF" stroke-width="1.5"/>
+          <path d="M9 5v8M6 10l3 3 3-3" stroke="#4C8EFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="text-[12px] text-lo">Ingest</span>
       </div>
-      <div class="flex items-center gap-6 text-[12px] font-mono text-slate">
-        <a href="#docs" class="hover:text-paper transition-colors">Docs</a>
-        <a href="#" class="hover:text-paper transition-colors">Status</a>
-        <a href="#" class="hover:text-paper transition-colors">GitHub</a>
+      <div class="flex items-center gap-6 text-[12px] font-mono text-lo">
+        <a href="#docs" class="hover:text-hi transition-colors">Docs</a>
+        <a href="#" class="hover:text-hi transition-colors">Status</a>
+        <a href="#" class="hover:text-hi transition-colors">GitHub</a>
       </div>
     </div>
   </footer>
 
 <script>
   (function () {
-    const bar = document.getElementById('bar');
+    const bar      = document.getElementById('bar');
     const offsetEl = document.getElementById('offset');
     const statusEl = document.getElementById('status');
-    const eventLog = document.getElementById('eventLog');
-    const total = 2202009;
-    let offset = 0;
-    let phase = 'uploading';
-    let lastLoggedPct = -1;
+    const stream   = document.getElementById('stream');
+    const total    = 2202009;
+    let offset     = 0;
+    let phase      = 'uploading';
+    let lastBucket = -1;
 
     function fmt(n) { return n.toLocaleString('en-US'); }
 
-    function addEvent(msg, cls) {
-      if (eventLog.children.length >= 3) eventLog.firstChild.remove();
+    function addLine(msg, color) {
+      if (stream.children.length >= 4) stream.firstChild.remove();
       const el = document.createElement('div');
-      el.className = 'text-[11px] font-mono tabular-nums ' + (cls || 'text-slate/50');
+      el.className = 'tabular-nums';
+      el.style.color = color || '#4E5160';
       el.textContent = msg;
-      eventLog.appendChild(el);
+      stream.appendChild(el);
     }
 
     function step() {
@@ -290,55 +246,51 @@ curl -I https://api.ingest.dev/uploads/up_8f2a1c \
         offset = Math.min(total, offset + Math.floor(total * 0.045));
         const pct = Math.round((offset / total) * 100);
         bar.style.width = pct + '%';
-        offsetEl.textContent = 'offset ' + fmt(offset) + ' / ' + fmt(total);
-        statusEl.textContent = 'uploading';
-        statusEl.className = 'text-[11px] font-mono text-amber tabular-nums';
+        offsetEl.textContent = fmt(offset) + ' / ' + fmt(total) + ' bytes';
+        statusEl.textContent = pct + '%';
+        statusEl.style.color = '#4C8EFF';
 
-        if (Math.floor(pct / 25) > Math.floor(lastLoggedPct / 25)) {
-          addEvent('chunk · ' + fmt(offset) + ' bytes confirmed');
-          lastLoggedPct = pct;
+        const bucket = Math.floor(pct / 20);
+        if (bucket > lastBucket) {
+          addLine('PATCH /uploads/up_8f2a1c  offset ' + fmt(offset));
+          lastBucket = bucket;
         }
 
         if (pct >= 62 && pct < 68) {
           phase = 'dropped';
-          statusEl.textContent = 'connection lost';
-          statusEl.className = 'text-[11px] font-mono text-slate tabular-nums';
-          addEvent('— dropped at ' + fmt(offset), 'text-slate/40');
+          statusEl.textContent = 'dropped';
+          statusEl.style.color = '#4E5160';
+          addLine('connection lost at ' + fmt(offset));
           setTimeout(step, 1400);
           return;
         }
         if (offset >= total) {
           phase = 'done';
-          bar.className = 'h-full bg-resolve rounded-full';
+          bar.style.background = '#2ECC97';
           statusEl.textContent = 'complete';
-          statusEl.className = 'text-[11px] font-mono text-resolve tabular-nums';
-          addEvent('stored · sha256 verified', 'text-resolve');
+          statusEl.style.color = '#2ECC97';
+          addLine('stored · sha256 verified', '#2ECC97');
           setTimeout(reset, 2500);
           return;
         }
         setTimeout(step, 220);
       } else if (phase === 'dropped') {
         phase = 'resuming';
-        statusEl.textContent = 'resuming from offset';
-        statusEl.className = 'text-[11px] font-mono text-amber tabular-nums';
-        addEvent('HEAD /uploads/up_8f2a1c', 'text-amber/60');
+        statusEl.textContent = 'resuming';
+        statusEl.style.color = '#4C8EFF';
+        addLine('HEAD /uploads/up_8f2a1c  →  Upload-Offset: ' + fmt(offset), '#4C8EFF');
         setTimeout(step, 900);
       } else if (phase === 'resuming') {
-        addEvent('resuming from ' + fmt(offset), 'text-amber/60');
         phase = 'uploading';
         step();
       }
     }
 
     function reset() {
-      offset = 0;
-      phase = 'uploading';
-      lastLoggedPct = -1;
-      bar.style.width = '0%';
-      bar.className = 'h-full bg-amber rounded-full';
-      statusEl.textContent = 'connecting';
-      statusEl.className = 'text-[11px] font-mono text-slate tabular-nums';
-      eventLog.innerHTML = '';
+      offset = 0; phase = 'uploading'; lastBucket = -1;
+      bar.style.width = '0%'; bar.style.background = '#4C8EFF';
+      statusEl.textContent = 'connecting'; statusEl.style.color = '#4E5160';
+      stream.innerHTML = '';
       setTimeout(step, 900);
     }
 

@@ -13,13 +13,13 @@
     theme: {
       extend: {
         colors: {
-          ink: '#12151A',
-          paper: '#EDEAE3',
-          slate: '#868D96',
-          amber: '#F2A93C',
-          resolve: '#3ECF8E',
-          panel: '#191D23',
-          danger: '#E2685A',
+          ink:   '#07080A',
+          lift:  '#0E1016',
+          hi:    '#EFEFEF',
+          lo:    '#4E5160',
+          blue:  '#4C8EFF',
+          green: '#2ECC97',
+          red:   '#E05555',
         },
         fontFamily: {
           sans: ['"IBM Plex Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -30,142 +30,146 @@
   };
 </script>
 </head>
-<body class="bg-ink text-paper font-sans min-h-dvh" style="background:#12151A; padding-bottom:env(safe-area-inset-bottom,0px);">
+<body class="bg-ink text-hi font-sans min-h-dvh" style="background:#07080A; padding-bottom:env(safe-area-inset-bottom,0px);">
 
-  <header class="border-b border-white/10" style="padding-top:env(safe-area-inset-top,0px);">
+  <header class="border-b border-white/[0.05]" style="padding-top:env(safe-area-inset-top,0px);">
     <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
-        <div class="size-2.5 rounded-full bg-amber"></div>
-        <a href="/" class="text-[15px] font-medium hover:opacity-80 transition-opacity">Ingest</a>
-        <span class="text-[13px] text-slate font-mono">/ demo</span>
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <rect x="1" y="1" width="16" height="16" rx="4" stroke="#4C8EFF" stroke-width="1.5"/>
+          <path d="M9 5v8M6 10l3 3 3-3" stroke="#4C8EFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <a href="/" class="text-[15px] font-medium hover:opacity-70 transition-opacity">Ingest</a>
+        <span class="text-[13px] text-lo font-mono">/ demo</span>
       </div>
-      <a href="/" class="text-[13px] text-slate hover:text-paper transition-colors">← Overview</a>
+      <a href="/" class="text-[13px] text-lo hover:text-hi transition-colors">← Overview</a>
     </div>
   </header>
 
-  <main class="max-w-3xl mx-auto px-6 py-14">
-    <h1 class="text-[28px] sm:text-[34px] font-medium leading-[1.15] text-balance">
+  <main class="max-w-3xl mx-auto px-6 py-16">
+    <h1 class="text-[28px] sm:text-[36px] font-semibold leading-[1.12] text-balance">
       Try it with a real file.
     </h1>
-    <p class="mt-4 text-[14px] leading-[1.75] text-slate max-w-[50ch] text-pretty">
-      Pick any file from your device. It's chunked and hashed in your browser — nothing
-      leaves this page. Kill the connection partway through to see it resume from the
-      exact byte offset instead of restarting.
+    <p class="mt-4 text-[14px] leading-[1.75] text-lo max-w-[50ch] text-pretty">
+      Drop any file. It's chunked in your browser — nothing leaves this page until
+      you hit the API. Kill the connection partway through. The next attempt resumes
+      from the last byte the server confirmed, not from zero.
     </p>
 
     <!-- Drop zone -->
-    <div id="dropzone" class="mt-10 border border-dashed border-white/15 rounded-xl p-12 text-center cursor-pointer hover:border-amber/40 hover:bg-amber/[0.02] transition-all">
+    <div id="dropzone" class="mt-10 border border-dashed border-white/[0.12] rounded-xl p-14 text-center cursor-pointer hover:border-blue/40 hover:bg-blue/[0.02] transition-all">
       <input type="file" id="fileInput" class="hidden">
-      <div class="size-10 mx-auto mb-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" class="text-slate">
+      <div class="size-10 mx-auto mb-4 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" class="text-lo">
           <path d="M9 11V3M6 6l3-3 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M3 13v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
       </div>
-      <p class="text-[14px] font-medium text-paper/90">Drop a file here, or click to choose</p>
-      <p class="mt-1.5 text-[12px] font-mono text-slate">JPEG · PNG · GIF · WebP · PDF · MP4 · Max 512 MB</p>
+      <p class="text-[14px] font-medium">Drop a file here, or click to choose</p>
+      <p class="mt-1.5 text-[12px] font-mono text-lo">JPEG · PNG · GIF · WebP · PDF · MP4 · Max 512 MB</p>
     </div>
 
     <!-- Upload panel -->
-    <div id="panel" class="mt-6 hidden space-y-3">
+    <div id="panel" class="mt-6 hidden space-y-2">
 
-      <!-- File + progress card -->
-      <div class="bg-panel border border-white/10 rounded-xl overflow-hidden">
-        <div class="px-5 py-4 border-b border-white/10 flex items-center gap-3">
-          <div class="size-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="text-slate">
+      <!-- Progress -->
+      <div class="bg-lift border border-white/[0.07] rounded-xl overflow-hidden font-mono text-[12px]">
+        <div class="px-5 py-4 border-b border-white/[0.07] flex items-center gap-3">
+          <div class="size-8 rounded-lg bg-white/[0.04] border border-white/[0.07] flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="text-lo">
               <path d="M9.5 1H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5.5L9.5 1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
               <path d="M9 1v5h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
             </svg>
           </div>
           <div class="min-w-0 flex-1">
-            <p class="text-[13px] font-mono text-paper/90 truncate" id="filename"></p>
-            <p class="text-[11px] font-mono text-slate mt-0.5 tabular-nums" id="filesize"></p>
+            <p class="text-hi/90 truncate" id="filename"></p>
+            <p class="text-lo mt-0.5 tabular-nums" id="filesize"></p>
           </div>
-          <span id="status" class="text-[11px] font-mono text-slate shrink-0 tabular-nums"></span>
+          <span id="status" class="text-lo shrink-0 tabular-nums"></span>
         </div>
         <div class="px-5 py-4">
-          <div class="h-1 rounded-full bg-white/5 overflow-hidden">
-            <div id="bar" class="h-full bg-amber rounded-full" style="width:0%; transition: width 0.25s linear;"></div>
+          <div class="h-[3px] rounded-full bg-white/[0.06] overflow-hidden">
+            <div id="bar" class="h-full rounded-full" style="width:0%; background:#4C8EFF; transition: width 0.25s linear;"></div>
           </div>
           <div class="mt-2">
-            <span id="offset" class="text-[11px] font-mono text-slate tabular-nums"></span>
+            <span id="offset" class="text-lo tabular-nums"></span>
           </div>
         </div>
-        <div class="px-5 py-3 border-t border-white/10 flex items-center gap-3">
-          <button id="killBtn" class="hidden text-[12px] font-medium border border-white/15 text-paper/80 px-3.5 py-1.5 rounded-md hover:border-danger hover:text-danger transition-colors">
+        <div class="px-5 py-3 border-t border-white/[0.07] flex items-center gap-3">
+          <button id="killBtn" class="hidden text-[12px] font-medium border border-white/[0.1] text-hi/70 px-3.5 py-1.5 rounded-lg hover:border-red/50 hover:text-red transition-colors">
             Simulate dropped connection
           </button>
-          <button id="resumeBtn" class="hidden text-[12px] font-medium bg-amber text-ink px-3.5 py-1.5 rounded-md hover:brightness-110 transition-all">
+          <button id="resumeBtn" class="hidden text-[12px] font-medium bg-blue text-white px-3.5 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
             Resume upload
           </button>
-          <button id="resetBtn" class="hidden text-[12px] font-medium text-slate hover:text-paper transition-colors ml-auto">
+          <button id="resetBtn" class="hidden text-[12px] text-lo hover:text-hi transition-colors ml-auto">
             Try another file
           </button>
         </div>
       </div>
 
-      <!-- Event log -->
-      <div class="bg-panel border border-white/10 rounded-xl overflow-hidden">
-        <div class="px-5 py-3 border-b border-white/10">
-          <span class="text-[11px] font-mono text-slate uppercase tracking-widest">Event log</span>
+      <!-- Log -->
+      <div class="bg-lift border border-white/[0.07] rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-white/[0.07]">
+          <span class="text-[11px] font-mono text-lo">event log</span>
         </div>
-        <div id="log" class="px-5 py-3 font-mono text-[11px] text-slate space-y-1 max-h-36 overflow-y-auto"></div>
+        <div id="log" class="px-5 py-3 font-mono text-[11px] text-lo space-y-1.5 max-h-36 overflow-y-auto"></div>
       </div>
 
       <!-- Result -->
-      <div id="result" class="hidden bg-panel border border-white/10 rounded-xl p-5">
-        <div id="resultBadge" class="inline-block text-[12px] font-mono px-3 py-1 rounded-md mb-3"></div>
-        <p id="resultText" class="text-[13px] leading-[1.6] text-slate text-pretty"></p>
-        <p class="mt-3 text-[11px] font-mono text-slate/40 break-all tabular-nums" id="resultHash"></p>
+      <div id="result" class="hidden bg-lift border border-white/[0.07] rounded-xl p-5">
+        <div id="resultBadge" class="inline-block text-[11px] font-mono px-3 py-1 rounded-md mb-3"></div>
+        <p id="resultText" class="text-[13px] leading-[1.65] text-lo text-pretty"></p>
+        <p class="mt-3 text-[11px] font-mono text-lo/40 break-all tabular-nums" id="resultHash"></p>
       </div>
     </div>
 
-    <p class="mt-6 text-[11px] font-mono text-slate/50 leading-[1.6] max-w-[52ch]">
-      Chunks are sent to the real API running on this server. Upload the same file twice
-      to see the server-side dedup check hit.
+    <p class="mt-6 text-[11px] font-mono text-lo/40 leading-[1.6] max-w-[52ch]">
+      Chunks are sent to the real API running on this server. Upload the same file twice to see
+      the server-side dedup check hit.
     </p>
   </main>
 
 <script>
 (function () {
-  const dropzone  = document.getElementById('dropzone');
-  const fileInput = document.getElementById('fileInput');
-  const panel     = document.getElementById('panel');
-  const filenameEl= document.getElementById('filename');
-  const filesizeEl= document.getElementById('filesize');
-  const bar       = document.getElementById('bar');
-  const offsetEl  = document.getElementById('offset');
-  const statusEl  = document.getElementById('status');
-  const killBtn   = document.getElementById('killBtn');
-  const resumeBtn = document.getElementById('resumeBtn');
-  const resetBtn  = document.getElementById('resetBtn');
-  const logEl     = document.getElementById('log');
-  const resultEl  = document.getElementById('result');
-  const resultBadge   = document.getElementById('resultBadge');
-  const resultText    = document.getElementById('resultText');
-  const resultHashEl  = document.getElementById('resultHash');
+  const dropzone   = document.getElementById('dropzone');
+  const fileInput  = document.getElementById('fileInput');
+  const panel      = document.getElementById('panel');
+  const filenameEl = document.getElementById('filename');
+  const filesizeEl = document.getElementById('filesize');
+  const bar        = document.getElementById('bar');
+  const offsetEl   = document.getElementById('offset');
+  const statusEl   = document.getElementById('status');
+  const killBtn    = document.getElementById('killBtn');
+  const resumeBtn  = document.getElementById('resumeBtn');
+  const resetBtn   = document.getElementById('resetBtn');
+  const logEl      = document.getElementById('log');
+  const resultEl   = document.getElementById('result');
+  const resultBadge    = document.getElementById('resultBadge');
+  const resultText     = document.getElementById('resultText');
+  const resultHashEl   = document.getElementById('resultHash');
 
   const CHUNK_SIZE = 256 * 1024;
 
   function fmtBytes(n) {
-    if (n < 1024) return n + ' B';
+    if (n < 1024)    return n + ' B';
     if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
     return (n / 1048576).toFixed(1) + ' MB';
   }
   function fmt(n) { return n.toLocaleString('en-US'); }
 
-  function appendLog(msg, cls) {
+  function appendLog(msg, color) {
     const line = document.createElement('div');
     line.textContent = msg;
-    if (cls) line.className = cls;
+    line.className = 'tabular-nums';
+    if (color) line.style.color = color;
     logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function setStatus(text, cls) {
+  function setStatus(text, color) {
     statusEl.textContent = text;
-    statusEl.className = 'text-[11px] font-mono shrink-0 tabular-nums ' + (cls || 'text-slate');
+    statusEl.style.color = color || '#4E5160';
   }
 
   async function hexSha256(buf) {
@@ -174,11 +178,11 @@
   }
 
   dropzone.addEventListener('click', () => fileInput.click());
-  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('border-amber/40'); });
-  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-amber/40'));
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('border-blue/40'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-blue/40'));
   dropzone.addEventListener('drop', e => {
     e.preventDefault();
-    dropzone.classList.remove('border-amber/40');
+    dropzone.classList.remove('border-blue/40');
     if (e.dataTransfer.files[0]) startUpload(e.dataTransfer.files[0]);
   });
   fileInput.addEventListener('change', () => { if (fileInput.files[0]) startUpload(fileInput.files[0]); });
@@ -225,7 +229,7 @@
 
     while (offset < file.size) {
       const chunk = file.slice(offset, offset + CHUNK_SIZE);
-      abortCtrl   = new AbortController();
+      abortCtrl = new AbortController();
 
       let res;
       try {
@@ -251,7 +255,7 @@
       const pct = Math.min(100, Math.round((offset / file.size) * 100));
       bar.style.width = pct + '%';
       offsetEl.textContent = 'offset ' + fmt(offset) + ' / ' + fmt(file.size);
-      setStatus('uploading', 'text-amber');
+      setStatus(pct + '%', '#4C8EFF');
       appendLog('chunk · offset ' + fmt(offset));
 
       if (res.status === 200) {
@@ -265,15 +269,15 @@
 
   killBtn.addEventListener('click', () => {
     if (abortCtrl) abortCtrl.abort();
-    setStatus('connection lost', 'text-danger');
-    appendLog('— dropped at offset ' + fmt(parseInt(offsetEl.textContent.match(/offset ([\d,]+)/)?.[1]?.replace(/,/g, '') || 0)) + ' —', 'text-danger');
+    setStatus('dropped');
+    appendLog('— dropped at offset ' + fmt(parseInt(offsetEl.textContent.match(/offset ([\d,]+)/)?.[1]?.replace(/,/g, '') || 0)) + ' —', '#E05555');
     killBtn.classList.add('hidden');
     resumeBtn.classList.remove('hidden');
   });
 
   resumeBtn.addEventListener('click', async () => {
     resumeBtn.classList.add('hidden');
-    setStatus('querying offset…');
+    setStatus('querying…');
 
     let res;
     try {
@@ -282,7 +286,7 @@
       return showError('Resume failed: ' + e.message);
     }
     const serverOffset = parseInt(res.headers.get('Upload-Offset') || '0', 10);
-    appendLog('resuming from server offset ' + fmt(serverOffset), 'text-amber');
+    appendLog('resuming from server offset ' + fmt(serverOffset), '#4C8EFF');
 
     killBtn.classList.remove('hidden');
     const hash = resultHashEl.textContent.replace('sha256: ', '');
@@ -291,23 +295,23 @@
 
   function finishUpload(hash, deduped, canonicalId) {
     bar.style.width = '100%';
-    setStatus('complete', 'text-resolve');
     killBtn.classList.add('hidden');
     resumeBtn.classList.add('hidden');
-    appendLog('stored · key ' + canonicalId.slice(0, 8) + '…', 'text-resolve');
+    appendLog('stored · key ' + canonicalId.slice(0, 8) + '…', '#2ECC97');
 
     resultEl.classList.remove('hidden');
     resultHashEl.textContent = 'sha256: ' + hash;
 
     if (deduped) {
-      bar.className = 'h-full bg-resolve rounded-full';
-      setStatus('deduplicated', 'text-resolve');
+      bar.style.background = '#2ECC97';
+      setStatus('deduplicated', '#2ECC97');
       resultBadge.textContent = 'Deduplicated';
-      resultBadge.className = 'inline-block text-[12px] font-mono px-3 py-1 rounded-md bg-resolve/10 text-resolve border border-resolve/20';
+      resultBadge.style.cssText = 'background:rgba(46,204,151,0.08); color:#2ECC97; border:1px solid rgba(46,204,151,0.2)';
       resultText.textContent = 'Identical content already existed — 0 new bytes written to storage.';
     } else {
+      setStatus('complete', '#2ECC97');
       resultBadge.textContent = 'Stored as new object';
-      resultBadge.className = 'inline-block text-[12px] font-mono px-3 py-1 rounded-md bg-amber/10 text-amber border border-amber/20';
+      resultBadge.style.cssText = 'background:rgba(76,142,255,0.08); color:#4C8EFF; border:1px solid rgba(76,142,255,0.2)';
       resultText.textContent = 'Upload the same file again to see the server-side dedup check catch it.';
     }
 
@@ -315,26 +319,22 @@
   }
 
   function showError(msg) {
-    setStatus('error', 'text-danger');
-    appendLog('✗ ' + msg, 'text-danger');
+    setStatus('error', '#E05555');
+    appendLog('✗ ' + msg, '#E05555');
     killBtn.classList.add('hidden');
     resumeBtn.classList.add('hidden');
     resetBtn.classList.remove('hidden');
   }
 
   function resetUI() {
-    bar.style.width = '0%';
-    bar.className = 'h-full bg-amber rounded-full';
+    bar.style.width = '0%'; bar.style.background = '#4C8EFF';
     logEl.innerHTML = '';
     resultEl.classList.add('hidden');
     resetBtn.classList.add('hidden');
     killBtn.classList.add('hidden');
     resumeBtn.classList.add('hidden');
-    sessionId  = null;
-    uploadFile = null;
-    abortCtrl  = null;
-    setStatus('');
-    offsetEl.textContent = '';
+    sessionId = null; uploadFile = null; abortCtrl = null;
+    setStatus(''); offsetEl.textContent = '';
   }
 
   resetBtn.addEventListener('click', () => {
