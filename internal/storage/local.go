@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type LocalStorage struct {
@@ -59,8 +60,24 @@ func (l *LocalStorage) Delete(_ context.Context, key string) error {
 // Append writes r into the file at dir/key starting at offset.
 // io.NewOffsetWriter wraps the *os.File so every Write lands at the right
 // position without seeking — the file cursor is never touched.
+//
+// On Windows, antivirus software can briefly hold an exclusive handle on the
+// file as it grows. The open is retried with short backoffs to ride out those
+// transient locks before returning an error.
 func (l *LocalStorage) Append(_ context.Context, key string, offset int64, r io.Reader) (int64, error) {
-	f, err := os.OpenFile(filepath.Join(l.dir, key), os.O_WRONLY|os.O_CREATE, 0644)
+	path := filepath.Join(l.dir, key)
+
+	var f *os.File
+	var err error
+	for attempt := range 4 {
+		f, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0644)
+		if err == nil {
+			break
+		}
+		if attempt < 3 {
+			time.Sleep(time.Duration(attempt+1) * 25 * time.Millisecond)
+		}
+	}
 	if err != nil {
 		return 0, fmt.Errorf("storage: open %q: %w", key, err)
 	}
