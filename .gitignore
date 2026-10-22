@@ -1,1 +1,3 @@
-.env
+/uploads/
+config.bat
+node_modules
